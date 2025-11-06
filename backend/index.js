@@ -1,3 +1,4 @@
+// backend/index.js
 import express from "express";
 import cors from "cors";
 import dotenv from "dotenv";
@@ -6,6 +7,7 @@ dotenv.config();
 
 const app = express();
 app.use(cors());
+app.use(express.json()); // ⬅ parse JSON bodies
 
 const ODDS_KEY = process.env.ODDS_API_KEY;
 const PORT = process.env.PORT || 8787;
@@ -29,9 +31,7 @@ function mapLeague(q) {
 function mapMarkets(q) {
   // Accept aliases; Odds API expects 'h2h' for moneyline
   const parts = String(q || "spreads,h2h").split(",").map(s => s.trim().toLowerCase());
-  const mapped = parts.map(m =>
-    m === "moneyline" || m === "ml" ? "h2h" : m
-  );
+  const mapped = parts.map(m => (m === "moneyline" || m === "ml" ? "h2h" : m));
   // de-dupe & keep only supported
   const allow = new Set(["spreads", "h2h", "totals"]);
   return [...new Set(mapped.filter(m => allow.has(m)))].join(",") || "spreads,h2h";
@@ -53,6 +53,30 @@ function getCache(key) {
 }
 function setCache(key, data, ttlMs = 30_000) {
   cache.set(key, { data, exp: Date.now() + ttlMs });
+}
+
+// Build a quick index of games for server-side lock validation
+async function fetchGamesIndex(leagueKey) {
+  const url = new URL(`https://api.the-odds-api.com/v4/sports/${leagueKey}/odds`);
+  url.searchParams.set("apiKey", ODDS_KEY);
+  url.searchParams.set("regions", "us");
+  url.searchParams.set("markets", "h2h"); // cheap & includes commence_time, teams
+  url.searchParams.set("oddsFormat", "american");
+
+  const t = withTimeout(12_000);
+  const resp = await fetch(url, { signal: t.signal }).finally(t.cancel);
+  if (!resp.ok) throw new Error(`odds upstream failed: ${resp.status}`);
+  const raw = await resp.json();
+
+  const idx = new Map();
+  for (const g of raw || []) {
+    idx.set(g.id, {
+      commenceTime: g.commence_time,
+      home: g.home_team,
+      away: g.away_team,
+    });
+  }
+  return idx;
 }
 
 // ------- routes -------
@@ -148,6 +172,63 @@ app.get("/api/lines", async (req, res) => {
     const msg = e?.message || String(e);
     console.error("server_error:", msg);
     res.status(500).json({ error: "server_error", detail: msg });
+  }
+});
+
+/**
+ * POST /api/picks
+ * body: { league?: "nfl"|"ncaaf", picks: [{ gameId, side: "home"|"away" }] }
+ * returns: { serverTime, league, accepted: [...], rejected: [...] }
+ *
+ * NOTE: This does not persist yet—just validates locks. (Step 3 will add DB.)
+ */
+app.post("/api/picks", async (req, res) => {
+  try {
+    const leagueKey = mapLeague(req.body?.league);
+    const picks = Array.isArray(req.body?.picks) ? req.body.picks : [];
+
+    if (!picks.length) {
+      return res.status(400).json({ error: "no_picks", message: "No picks provided" });
+    }
+    for (const p of picks) {
+      if (!p?.gameId || !["home", "away"].includes(p?.side)) {
+        return res.status(400).json({ error: "bad_pick", message: "Invalid pick shape" });
+      }
+    }
+
+    const idx = await fetchGamesIndex(leagueKey);
+    const now = Date.now();
+
+    const accepted = [];
+    const rejected = [];
+
+    for (const p of picks) {
+      const meta = idx.get(p.gameId);
+      if (!meta) {
+        rejected.push({ ...p, reason: "unknown_game" });
+        continue;
+      }
+      const start = new Date(meta.commenceTime).getTime();
+      if (now >= start) {
+        rejected.push({ ...p, reason: "locked" });
+        continue;
+      }
+      accepted.push({
+        ...p,
+        commenceTime: meta.commenceTime,
+        receivedAt: new Date().toISOString(),
+      });
+    }
+
+    res.json({
+      serverTime: new Date().toISOString(),
+      league: leagueKey,
+      accepted,
+      rejected,
+    });
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: "server_error" });
   }
 });
 

@@ -1,14 +1,18 @@
-import useSWR, { SWRResponse } from "swr";
+import useSWR from "swr";
 import type { Game } from "../types";
 
-// Backend response shape
+// Backend response shape (matches backend: meta.{xRemaining,xUsed,fetchedAt})
 interface LinesResponse {
   league: string;
   games: Game[];
-  rateLimit?: { remaining?: number; used?: number };
+  meta?: {
+    xRemaining?: string | null;
+    xUsed?: string | null;
+    fetchedAt?: string;
+  };
 }
 
-// Use environment variable if set (no trailing slash), otherwise localhost
+// Use env var if set (strip trailing slash), otherwise localhost
 const API_BASE =
   (import.meta as any).env?.VITE_API_URL?.replace(/\/$/, "") ||
   "http://localhost:8787";
@@ -37,25 +41,24 @@ export function useLines(league: "nfl" | "ncaaf" = "nfl") {
 
   const key = `${API_BASE}/api/lines?${params.toString()}`;
 
-  const {
-    data,
-    error,
-    isLoading,
-    isValidating,
-    mutate,
-  }: SWRResponse<LinesResponse, Error> = useSWR(key, fetcher<LinesResponse>, {
-    refreshInterval: 60_000,
-    dedupingInterval: 10_000,
-    revalidateOnFocus: false,
-    shouldRetryOnError: true,
-    errorRetryCount: 3,
-    errorRetryInterval: 3000,
-  });
+  const { data, error, isLoading, isValidating, mutate } = useSWR<LinesResponse>(
+    key,
+    fetcher<LinesResponse>,
+    {
+      refreshInterval: 60_000,
+      dedupingInterval: 10_000,
+      revalidateOnFocus: false,
+      shouldRetryOnError: true,
+      errorRetryCount: 3,
+      errorRetryInterval: 3000,
+    }
+  );
 
   return {
     games: data?.games ?? [],
     league: data?.league ?? league,
-    rateLimit: data?.rateLimit,
+    // expose backend meta (rate-limit headers + timestamp)
+    meta: data?.meta,
     error,
     isLoading: !!isLoading,
     isValidating: !!isValidating,
