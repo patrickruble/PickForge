@@ -2,3 +2,66 @@
 
 @source "./index.html";
 @source "./src/**/*.{js,jsx,ts,tsx}";
+
+/* -----------------------------------------
+   PICKFORGE LOGO ANIMATION (Custom CSS OK)
+------------------------------------------ */
+
+.pf-logo {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  cursor: pointer;
+}
+
+.pf-logo-lock {
+  width: 22px;
+  height: 22px;
+  border-radius: 9999px;
+  border: 2px solid #facc15; /* Tailwind yellow-400 */
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+  transition: transform 150ms ease-out, box-shadow 150ms ease-out;
+}
+
+/* tiny arch above lock */
+.pf-logo-lock::before {
+  content: "";
+  position: absolute;
+  top: -6px;
+  width: 12px;
+  height: 8px;
+  border-radius: 9999px;
+  border: 2px solid #facc15;
+  border-bottom: none;
+}
+
+/* “PickForge” text */
+.pf-logo-text {
+  font-weight: 700;
+  letter-spacing: 0.05em;
+}
+
+/* subtle idle floating motion */
+@keyframes pf-lock-idle {
+  0%, 100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-1px);
+  }
+}
+
+/* apply idle animation */
+.pf-logo-lock {
+  animation: pf-lock-idle 2.3s ease-in-out infinite;
+}
+
+/* hover glow + lock effect */
+.pf-logo:hover .pf-logo-lock {
+  animation: none;
+  transform: translateY(0) scale(1.05);
+  box-shadow: 0 0 8px rgba(250, 204, 21, 0.7);
+}

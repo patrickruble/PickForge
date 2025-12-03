@@ -6,6 +6,7 @@ import { supabase } from "../lib/supabase";
 type ProfileRow = { username: string | null };
 
 export default function Header() {
+  const [userId, setUserId] = useState<string | null>(null);
   const [email, setEmail] = useState<string | null>(null);
   const [username, setUsername] = useState<string | null>(null);
   const navigate = useNavigate();
@@ -13,29 +14,69 @@ export default function Header() {
   useEffect(() => {
     let mounted = true;
 
-    const load = async () => {
-      const { data: { session } } = await supabase.auth.getSession();
+    async function load() {
+      const {
+        data: { session },
+        error,
+      } = await supabase.auth.getSession();
+
+      if (error) {
+        console.error("[Header] getSession error:", error);
+      }
       if (!mounted) return;
 
       const u = session?.user ?? null;
+      setUserId(u?.id ?? null);
       setEmail(u?.email ?? null);
 
-      if (u?.id) {
-        const { data } = await supabase
-          .from("profiles")
-          .select("username")
-          .eq("id", u.id)
-          .maybeSingle();
-
-        if (!mounted) return;
-        setUsername((data as ProfileRow | null)?.username ?? null);
-      } else {
+      if (!u?.id) {
         setUsername(null);
+        return;
       }
-    };
+
+      const { data, error: profileError } = await supabase
+        .from("profiles")
+        .select("username")
+        .eq("id", u.id)
+        .maybeSingle();
+
+      if (!mounted) return;
+
+      if (profileError) {
+        console.error("[Header] profile load error:", profileError);
+      }
+
+      setUsername((data as ProfileRow | null)?.username ?? null);
+    }
 
     load();
-    const { data: sub } = supabase.auth.onAuthStateChange(() => load());
+
+    const { data: sub } = supabase.auth.onAuthStateChange((_event, session) => {
+      const u = session?.user ?? null;
+
+      if (!u) {
+        setUserId(null);
+        setEmail(null);
+        setUsername(null);
+        return;
+      }
+
+      setUserId(u.id);
+      setEmail(u.email ?? null);
+
+      supabase
+        .from("profiles")
+        .select("username")
+        .eq("id", u.id)
+        .maybeSingle()
+        .then(({ data, error }) => {
+          if (error) {
+            console.error("[Header] profile load error (sub):", error);
+          }
+          setUsername((data as ProfileRow | null)?.username ?? null);
+        });
+    });
+
     return () => {
       mounted = false;
       sub.subscription.unsubscribe();
@@ -44,37 +85,62 @@ export default function Header() {
 
   const displayName = useMemo(() => {
     if (username && username.trim()) return `@${username.trim()}`;
-    if (email) return email.split("@")[0]; // email handle
+    if (email) return email.split("@")[0];
     return null;
   }, [username, email]);
 
   return (
     <header className="border-b border-white/5 bg-slate-900">
       <div className="mx-auto max-w-6xl px-4 py-4 flex items-center justify-between">
-        <Link to="/" className="text-xl font-bold text-yellow-400">
-          PickForge
+        {/* Animated PickForge logo */}
+        <Link to="/" className="pf-logo text-yellow-400">
+          <span className="pf-logo-lock text-[0.6rem] font-bold">
+            🔒
+          </span>
+          <span className="pf-logo-text text-lg">
+            PickForge
+          </span>
         </Link>
 
         <nav className="text-sm text-slate-200 flex items-center gap-5">
-          <NavLink to="/" className={({isActive}) => isActive ? "text-white" : "hover:text-white"}>
+          <NavLink
+            to="/"
+            className={({ isActive }) =>
+              isActive ? "text-white" : "hover:text-white"
+            }
+          >
             Weekly Picks
           </NavLink>
-          <NavLink to="/mypicks" className={({isActive}) => isActive ? "text-white" : "hover:text-white"}>
+          <NavLink
+            to="/mypicks"
+            className={({ isActive }) =>
+              isActive ? "text-white" : "hover:text-white"
+            }
+          >
             My Picks
           </NavLink>
-          <NavLink to="/leaderboard" className={({isActive}) => isActive ? "text-white" : "hover:text-white"}>
+          <NavLink
+            to="/leaderboard"
+            className={({ isActive }) =>
+              isActive ? "text-white" : "hover:text-white"
+            }
+          >
             Leaderboard
           </NavLink>
 
           {displayName ? (
             <>
+              {/* Username pill → username page */}
               <Link
                 to="/username"
+                state={userId && email ? { userId, email } : undefined}
                 className="text-xs px-2 py-1 rounded bg-slate-800 border border-slate-700 hover:bg-slate-700"
                 title="Profile / username"
               >
                 {displayName}
               </Link>
+
+              {/* Logout */}
               <button
                 onClick={async () => {
                   await supabase.auth.signOut();

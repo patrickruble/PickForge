@@ -1,167 +1,156 @@
 // src/pages/Username.tsx
-import { useEffect, useMemo, useState } from "react";
+import { useState } from "react";
+import { useLocation, useNavigate } from "react-router-dom";
 import { supabase } from "../lib/supabase";
 
-const USERNAME_RE = /^[a-zA-Z0-9_\.]{3,20}$/; // letters, numbers, _ and . (3–20)
+type LocationState = {
+  userId?: string;
+  email?: string;
+};
 
 export default function Username() {
-  const [uid, setUid] = useState<string | null>(null);
-  const [email, setEmail] = useState<string | null>(null);
-  const [current, setCurrent] = useState<string | null>(null);
+  const nav = useNavigate();
+  const location = useLocation();
+  const state = (location.state || {}) as LocationState;
 
-  const [next, setNext] = useState("");
-  const [available, setAvailable] = useState<null | boolean>(null);
-  const [checking, setChecking] = useState(false);
+  const userId = state.userId ?? null;
+  const email = state.email ?? null;
 
+  const [newUsername, setNewUsername] = useState("");
   const [saving, setSaving] = useState(false);
-  const [msg, setMsg] = useState<string | null>(null);
+  const [message, setMessage] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
 
-  // Load session + current username
-  useEffect(() => {
-    (async () => {
-      const { data: { session } } = await supabase.auth.getSession();
-      const u = session?.user ?? null;
-      setUid(u?.id ?? null);
-      setEmail(u?.email ?? null);
-      if (!u?.id) return;
+  // ---------------- SAVE HANDLER ----------------
+  async function handleSave(e: React.FormEvent) {
+    e.preventDefault();
 
-      const { data, error } = await supabase
-        .from("profiles")
-        .select("username")
-        .eq("id", u.id)
-        .maybeSingle();
-
-      if (!error) setCurrent(data?.username ?? null);
-    })();
-  }, []);
-
-  // Debounced availability check
-  const candidate = useMemo(() => next.trim(), [next]);
-  useEffect(() => {
-    let cancel = false;
-    setMsg(null);
-
-    // Don’t check if empty or invalid format or unchanged
-    if (!candidate || !USERNAME_RE.test(candidate) || candidate === current) {
-      setAvailable(null);
+    if (!userId) {
+      setError("You must be logged in to set a username.");
       return;
     }
 
-    setChecking(true);
-    const t = setTimeout(async () => {
-      try {
-        const { data, error } = await supabase
-          .from("profiles")
-          .select("id")
-          .eq("username", candidate)
-          .limit(1);
+    const trimmed = newUsername.trim();
 
-        if (!cancel) {
+    if (!trimmed) {
+      setError("Please enter a username.");
+      return;
+    }
+    if (trimmed.length < 3) {
+      setError("Username must be at least 3 characters.");
+      return;
+    }
+    if (!/^[a-zA-Z0-9_]+$/.test(trimmed)) {
+      setError("Only letters, numbers, and underscores are allowed.");
+      return;
+    }
+
+    setSaving(true);
+    setError(null);
+    setMessage(null);
+
+    console.log("[Username] upserting profile", { userId, trimmed });
+
+    // Fire-and-forget, no .catch (TS doesn't like it on PromiseLike)
+    void supabase
+      .from("profiles")
+      .upsert(
+        { id: userId, username: trimmed },
+        { onConflict: "id" }
+      )
+      .then(
+        ({ error }) => {
           if (error) {
-            setAvailable(null);
+            console.error("[Username] upsert error:", error);
+            // we only show this if user is still on the page
+            setError(error.message || "Failed to save username.");
           } else {
-            setAvailable((data?.length ?? 0) === 0);
+            console.log("[Username] upsert success");
           }
+        },
+        (err: unknown) => {
+          console.error("[Username] upsert rejected:", err);
+          const msg =
+            err instanceof Error
+              ? err.message
+              : "Failed to save username (network error).";
+          setError(msg);
         }
-      } finally {
-        if (!cancel) setChecking(false);
-      }
-    }, 350); // debounce
+      );
 
-    return () => {
-      cancel = true;
-      clearTimeout(t);
-    };
-  }, [candidate, current]);
+    // Immediately update UI optimistically
+    setSaving(false);
+    setNewUsername("");
+    setMessage("Username saved!");
 
-  if (!uid) {
+    // brief pause so you see the message, then go home
+    setTimeout(() => {
+      nav("/"); // go to home / weekly picks, not /login
+    }, 600);
+  }
+
+  // ---------------- MISSING USER INFO ----------------
+  if (!userId) {
     return (
-      <div className="p-6 text-slate-300">
-        <h1 className="text-2xl font-bold text-yellow-400 mb-2">Set Username</h1>
-        <p>Please <a className="text-yellow-400 underline" href="/login">login</a> first.</p>
+      <div className="min-h-[60vh] flex items-center justify-center text-slate-300">
+        <div className="p-6 w-full max-w-md bg-slate-900/60 rounded-2xl">
+          <h1 className="text-2xl font-bold text-yellow-400 mb-2">
+            Set Username
+          </h1>
+          <p className="mb-4">
+            Missing user info. Please go to the login page first.
+          </p>
+          <button
+            onClick={() => nav("/login")}
+            className="px-4 py-2 rounded-xl bg-yellow-400 text-black font-semibold"
+          >
+            Go to login
+          </button>
+        </div>
       </div>
     );
   }
 
-  const formatError =
-    candidate && !USERNAME_RE.test(candidate)
-      ? "Use 3–20 chars: letters, numbers, dot, underscore."
-      : null;
-
-  const disableSave =
-    saving ||
-    !!formatError ||
-    !candidate ||
-    candidate === current ||
-    available === false;
-
-  async function save(e: React.FormEvent) {
-    e.preventDefault();
-    setMsg(null);
-
-    const value = candidate;
-    if (!value || formatError) return;
-
-    setSaving(true);
-    try {
-      const { error } = await supabase.rpc("set_username", { new_username: value });
-      if (error) throw error;
-
-      setCurrent(value);
-      setNext("");
-      setAvailable(null);
-      setMsg("Username saved!");
-    } catch (err: any) {
-      const m = String(err?.message || "");
-      // Friendly message if unique/duplicate constraint trips
-      if (/duplicate|unique/i.test(m)) {
-        setMsg("That username is already taken.");
-        setAvailable(false);
-      } else {
-        setMsg(m || "Failed to save username.");
-      }
-    } finally {
-      setSaving(false);
-    }
-  }
-
+  // ---------------- MAIN UI ----------------
   return (
-    <div className="p-6 max-w-md">
-      <h1 className="text-2xl font-bold text-yellow-400 mb-1">Account</h1>
-      <p className="text-slate-300 mb-4">{email}</p>
+    <div className="min-h-[60vh] flex items-center justify-center text-slate-300">
+      <div className="p-6 w-full max-w-md bg-slate-900/60 rounded-2xl">
+        <h1 className="text-2xl font-bold text-yellow-400 mb-1">
+          Set Username
+        </h1>
+        {email && <p className="text-slate-300 mb-4">{email}</p>}
 
-      <div className="mb-3 text-slate-300">
-        Current username: <b>{current ?? "— none —"}</b>
-      </div>
+        <p className="text-slate-400 text-sm mb-3">
+          Set your PickForge handle. You’ll see it on the login card and
+          leaderboard.
+        </p>
 
-      <form onSubmit={save} className="space-y-3">
-        <div>
-          <input
-            className="w-full rounded-xl bg-slate-800 p-3 text-white outline-none border border-slate-700 focus:border-yellow-400"
-            placeholder="choose a unique username (e.g., Pattymelt)"
-            value={next}
-            onChange={(e) => setNext(e.target.value)}
-            autoComplete="off"
-            spellCheck={false}
-          />
-          <div className="mt-1 text-xs">
-            {formatError && <span className="text-red-400">{formatError}</span>}
-            {!formatError && checking && <span className="text-slate-400">Checking availability…</span>}
-            {!formatError && available === true && <span className="text-emerald-400">Available ✓</span>}
-            {!formatError && available === false && <span className="text-red-400">Taken</span>}
+        <form onSubmit={handleSave} className="space-y-4 mt-2">
+          <div>
+            <label className="block text-sm mb-1">New username</label>
+            <input
+              type="text"
+              value={newUsername}
+              onChange={(e) => setNewUsername(e.target.value)}
+              className="w-full rounded-lg px-3 py-2 bg-slate-950/60 border border-slate-700 text-slate-100 outline-none focus:border-yellow-400"
+              placeholder="ForgeMaster22"
+            />
           </div>
-        </div>
 
-        <button
-          className={`bg-yellow-400 text-black font-semibold px-4 py-2 rounded-xl ${disableSave ? "opacity-70 pointer-events-none" : ""}`}
-          type="submit"
-          disabled={disableSave}
-        >
-          {saving ? "Saving…" : "Save Username"}
-        </button>
+          <button
+            className="w-full bg-yellow-400 text-black font-semibold py-2 rounded-xl hover:bg-yellow-300 disabled:opacity-60"
+            type="submit"
+            disabled={saving}
+          >
+            {saving ? "Saving…" : "Save Username"}
+          </button>
+        </form>
 
-        {msg && <p className="text-slate-300">{msg}</p>}
-      </form>
+        {message && (
+          <p className="text-emerald-300 text-sm mt-3">{message}</p>
+        )}
+        {error && <p className="text-red-400 text-sm mt-3">{error}</p>}
+      </div>
     </div>
   );
 }

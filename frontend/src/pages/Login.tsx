@@ -33,40 +33,70 @@ export default function Login() {
   const [notice, setNotice] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  // session display (if already signed in)
+  // session
   const [sessionEmail, setSessionEmail] = useState<string | null>(null);
+  const [sessionUserId, setSessionUserId] = useState<string | null>(null);
   const [username, setUsername] = useState<string | null>(null);
 
+  // -------- sync session + username --------
   useEffect(() => {
     let mounted = true;
 
-    async function sync() {
-      const { data: { session } } = await supabase.auth.getSession();
-      if (!mounted) return;
-      setSessionEmail(session?.user?.email ?? null);
+    async function syncInitial() {
+      const {
+        data: { session },
+        error,
+      } = await supabase.auth.getSession();
 
-      if (session?.user?.id) {
-        const { data } = await supabase
+      if (!mounted) return;
+
+      if (error) {
+        console.error("getSession error:", error);
+      }
+
+      const user = session?.user ?? null;
+      setSessionEmail(user?.email ?? null);
+      setSessionUserId(user?.id ?? null);
+
+      if (user?.id) {
+        const { data, error: profileError } = await supabase
           .from("profiles")
           .select("username")
-          .eq("id", session.user.id)
+          .eq("id", user.id)
           .maybeSingle();
-        if (mounted) setUsername((data as Profile | null)?.username ?? null);
+
+        if (!mounted) return;
+
+        if (profileError) {
+          console.error("profile load error:", profileError);
+        }
+        setUsername((data as Profile | null)?.username ?? null);
       } else {
         setUsername(null);
       }
     }
 
-    sync();
-    const { data: sub } = supabase.auth.onAuthStateChange((_e, s) => {
-      setSessionEmail(s?.user?.email ?? null);
-      if (s?.user?.id) {
+    syncInitial();
+
+    const { data: sub } = supabase.auth.onAuthStateChange((_event, session) => {
+      if (!mounted) return;
+
+      const user = session?.user ?? null;
+      setSessionEmail(user?.email ?? null);
+      setSessionUserId(user?.id ?? null);
+
+      if (user?.id) {
         supabase
           .from("profiles")
           .select("username")
-          .eq("id", s.user.id)
+          .eq("id", user.id)
           .maybeSingle()
-          .then(({ data }) => setUsername((data as Profile | null)?.username ?? null));
+          .then(({ data, error }) => {
+            if (error) {
+              console.error("profile load error (sub):", error);
+            }
+            setUsername((data as Profile | null)?.username ?? null);
+          });
       } else {
         setUsername(null);
       }
@@ -79,22 +109,30 @@ export default function Login() {
   }, []);
 
   async function ensureProfile(userId: string) {
-    await supabase.from("profiles").upsert({ id: userId }, { onConflict: "id" });
+    await supabase
+      .from("profiles")
+      .upsert({ id: userId }, { onConflict: "id" });
   }
 
   // -------- handlers --------
   async function onLogin(e: React.FormEvent) {
     e.preventDefault();
-    setError(null); setNotice(null); setLoading(true);
-    const { data, error } = await supabase.auth.signUp({
-  email: signupEmail.trim(),
-  password: signupPassword,
-  options: {
-    emailRedirectTo: `${window.location.origin}/auth/callback`,
-  },
-});
+    setError(null);
+    setNotice(null);
+    setLoading(true);
+
+    const { data, error } = await supabase.auth.signInWithPassword({
+      email: loginEmail.trim(),
+      password: loginPassword,
+    });
+
     setLoading(false);
-    if (error) return setError(error.message);
+
+    if (error) {
+      console.error("login error:", error);
+      return setError(error.message);
+    }
+
     if (data.session && data.user) {
       await ensureProfile(data.user.id);
       nav("/");
@@ -103,22 +141,34 @@ export default function Login() {
 
   async function onSignup(e: React.FormEvent) {
     e.preventDefault();
-    setError(null); setNotice(null);
-    if (signupPassword.length < 6) return setError("Password must be at least 6 characters.");
-    if (signupPassword !== signupConfirm) return setError("Passwords do not match.");
+    setError(null);
+    setNotice(null);
+
+    if (signupPassword.length < 6) {
+      return setError("Password must be at least 6 characters.");
+    }
+    if (signupPassword !== signupConfirm) {
+      return setError("Passwords do not match.");
+    }
+
     setLoading(true);
 
     const { data, error } = await supabase.auth.signUp({
       email: signupEmail.trim(),
       password: signupPassword,
-      options: { emailRedirectTo: window.location.origin }, // must be allowed in Supabase Auth settings
+      options: {
+        emailRedirectTo: `${window.location.origin}/auth/callback`,
+      },
     });
 
     setLoading(false);
+
     if (error) return setError(error.message);
 
     if (data.user && !data.session) {
-      setNotice("Account created. Please confirm your email to finish sign-up.");
+      setNotice(
+        "Account created. Please confirm your email to finish sign-up."
+      );
       return;
     }
 
@@ -133,45 +183,71 @@ export default function Login() {
     if (!to.trim()) return setResendMsg("Please enter your email first.");
     setResending(true);
     const { error } = await supabase.auth.resend({
-      type: "signup", // Resends the confirmation email for sign-up
+      type: "signup",
       email: to.trim(),
     });
     setResending(false);
-    setResendMsg(error ? error.message : `Confirmation email re-sent to ${to}. Check spam too.`);
+    setResendMsg(
+      error
+        ? error.message
+        : `Confirmation email re-sent to ${to}. Check spam too.`
+    );
   }
 
   async function onMagic(e: React.FormEvent) {
     e.preventDefault();
-    setError(null); setNotice(null); setLoading(true);
+    setError(null);
+    setNotice(null);
+    setLoading(true);
     const { error } = await supabase.auth.signInWithOtp({
-  email: magicEmail.trim(),
-  options: {
-    emailRedirectTo: `${window.location.origin}/auth/callback`,
-  },
-});
+      email: magicEmail.trim(),
+      options: {
+        emailRedirectTo: `${window.location.origin}/auth/callback`,
+      },
+    });
     setLoading(false);
     if (error) return setError(error.message);
     setMagicSent(true);
-    setNotice(`Magic link sent to ${magicEmail}. Open it in this same browser.`);
+    setNotice(
+      `Magic link sent to ${magicEmail}. Open it in this same browser.`
+    );
   }
 
-  // -------- Render states --------
+  // -------- render: already signed in --------
   if (sessionEmail) {
     return (
       <div className="min-h-[60vh] flex items-center justify-center text-gray-200">
         <div className="w-full max-w-md bg-slate-900/60 p-8 rounded-2xl">
-          <h1 className="text-2xl font-bold text-yellow-400 text-center mb-4">You’re signed in</h1>
+          <h1 className="text-2xl font-bold text-yellow-400 text-center mb-4">
+            You’re signed in
+          </h1>
           <p className="text-center text-slate-300 mb-2">
-            <span className="text-slate-400">Email:</span> <b>{sessionEmail}</b>
+            <span className="text-slate-400">Email:</span>{" "}
+            <b>{sessionEmail}</b>
           </p>
           <p className="text-center text-slate-300 mb-6">
-            <span className="text-slate-400">Username:</span> <b>{username ?? "—"}</b>{" "}
-            <Link to="/username" className="text-yellow-400 underline">
+            <span className="text-slate-400">Username:</span>{" "}
+            <b>{username ?? "—"}</b>{" "}
+            <button
+              type="button"
+              className="text-yellow-400 underline"
+              onClick={() =>
+                nav("/username", {
+                  state: {
+                    userId: sessionUserId,
+                    email: sessionEmail,
+                  },
+                })
+              }
+            >
               {username ? "edit" : "set username"}
-            </Link>
+            </button>
           </p>
           <div className="flex gap-3">
-            <button onClick={() => nav("/")} className="flex-1 bg-yellow-400 text-black font-semibold py-2 rounded-xl hover:bg-yellow-300">
+            <button
+              onClick={() => nav("/")}
+              className="flex-1 bg-yellow-400 text-black font-semibold py-2 rounded-xl hover:bg-yellow-300"
+            >
               Go to Weekly Picks
             </button>
             <button
@@ -188,22 +264,32 @@ export default function Login() {
     );
   }
 
-  // -------- Default form UI --------
+  // -------- render: default sign-in form --------
   return (
     <div className="min-h-[60vh] flex items-center justify-center text-gray-200">
       <div className="w-full max-w-md bg-slate-900/60 p-8 rounded-2xl">
-        <h1 className="text-2xl font-bold text-yellow-400 text-center mb-6">Sign In</h1>
+        <h1 className="text-2xl font-bold text-yellow-400 text-center mb-6">
+          Sign In
+        </h1>
 
         <div className="flex gap-2 mb-4">
           <button
             onClick={() => setTab("password")}
-            className={`flex-1 py-2 rounded ${tab === "password" ? "bg-yellow-400 text-black" : "bg-slate-800 text-slate-200"}`}
+            className={`flex-1 py-2 rounded ${
+              tab === "password"
+                ? "bg-yellow-400 text-black"
+                : "bg-slate-800 text-slate-200"
+            }`}
           >
-            Email & Password
+            Email &amp; Password
           </button>
           <button
             onClick={() => setTab("magic")}
-            className={`flex-1 py-2 rounded ${tab === "magic" ? "bg-yellow-400 text-black" : "bg-slate-800 text-slate-200"}`}
+            className={`flex-1 py-2 rounded ${
+              tab === "magic"
+                ? "bg-yellow-400 text-black"
+                : "bg-slate-800 text-slate-200"
+            }`}
           >
             Magic Link
           </button>
@@ -292,7 +378,9 @@ export default function Login() {
               {resending ? "Resending…" : "Resend confirmation email"}
             </button>
             {resendMsg && (
-              <p className="text-emerald-300 text-xs mt-1 text-center">{resendMsg}</p>
+              <p className="text-emerald-300 text-xs mt-1 text-center">
+                {resendMsg}
+              </p>
             )}
           </>
         ) : (
@@ -308,7 +396,7 @@ export default function Login() {
             <button
               type="submit"
               disabled={loading}
-              className={`w-full py-2 rounded-xl font-semibold ${
+              className={`w-full py-2 rounded-XL font-semibold ${
                 loading
                   ? "opacity-70 pointer-events-none"
                   : "bg-yellow-400 text-black hover:bg-yellow-300"
@@ -324,8 +412,14 @@ export default function Login() {
           </form>
         )}
 
-        {notice && <p className="text-emerald-300 text-sm text-center mt-3">{notice}</p>}
-        {error && <p className="text-red-400 text-sm text-center mt-3">{error}</p>}
+        {notice && (
+          <p className="text-emerald-300 text-sm text-center mt-3">
+            {notice}
+          </p>
+        )}
+        {error && (
+          <p className="text-red-400 text-sm text-center mt-3">{error}</p>
+        )}
       </div>
     </div>
   );
