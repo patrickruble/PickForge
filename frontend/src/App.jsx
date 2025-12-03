@@ -8,7 +8,7 @@ import Leaderboard from "./pages/Leaderboard";
 import Stats from "./pages/Stats";
 import Login from "./pages/Login";
 import Username from "./pages/Username";
-import AuthCallback from "./pages/AuthCallback.tsx"; // must exist
+import AuthCallback from "./pages/AuthCallback";
 
 export default function App() {
   return (
