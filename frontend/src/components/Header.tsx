@@ -3,12 +3,16 @@ import { useEffect, useMemo, useState } from "react";
 import { Link, NavLink, useNavigate } from "react-router-dom";
 import { supabase } from "../lib/supabase";
 
-type ProfileRow = { username: string | null };
+type ProfileRow = {
+  username: string | null;
+  avatar_url: string | null;
+};
 
 export default function Header() {
   const [userId, setUserId] = useState<string | null>(null);
   const [email, setEmail] = useState<string | null>(null);
   const [username, setUsername] = useState<string | null>(null);
+  const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -31,12 +35,13 @@ export default function Header() {
 
       if (!u?.id) {
         setUsername(null);
+        setAvatarUrl(null);
         return;
       }
 
       const { data, error: profileError } = await supabase
         .from("profiles")
-        .select("username")
+        .select("username, avatar_url")
         .eq("id", u.id)
         .maybeSingle();
 
@@ -46,7 +51,9 @@ export default function Header() {
         console.error("[Header] profile load error:", profileError);
       }
 
-      setUsername((data as ProfileRow | null)?.username ?? null);
+      const row = data as ProfileRow | null;
+      setUsername(row?.username ?? null);
+      setAvatarUrl(row?.avatar_url ?? null);
     }
 
     load();
@@ -58,6 +65,7 @@ export default function Header() {
         setUserId(null);
         setEmail(null);
         setUsername(null);
+        setAvatarUrl(null);
         return;
       }
 
@@ -66,14 +74,16 @@ export default function Header() {
 
       supabase
         .from("profiles")
-        .select("username")
+        .select("username, avatar_url")
         .eq("id", u.id)
         .maybeSingle()
         .then(({ data, error }) => {
           if (error) {
             console.error("[Header] profile load error (sub):", error);
           }
-          setUsername((data as ProfileRow | null)?.username ?? null);
+          const row = data as ProfileRow | null;
+          setUsername(row?.username ?? null);
+          setAvatarUrl(row?.avatar_url ?? null);
         });
     });
 
@@ -94,12 +104,8 @@ export default function Header() {
       <div className="mx-auto max-w-6xl px-4 py-4 flex items-center justify-between">
         {/* Animated PickForge logo */}
         <Link to="/" className="pf-logo text-yellow-400">
-          <span className="pf-logo-lock text-[0.6rem] font-bold">
-            🔒
-          </span>
-          <span className="pf-logo-text text-lg">
-            PickForge
-          </span>
+          <span className="pf-logo-lock text-[0.6rem] font-bold">🔒</span>
+          <span className="pf-logo-text text-lg">PickForge</span>
         </Link>
 
         <nav className="text-sm text-slate-200 flex items-center gap-5">
@@ -111,6 +117,7 @@ export default function Header() {
           >
             Weekly Picks
           </NavLink>
+
           <NavLink
             to="/mypicks"
             className={({ isActive }) =>
@@ -119,6 +126,7 @@ export default function Header() {
           >
             My Picks
           </NavLink>
+
           <NavLink
             to="/leaderboard"
             className={({ isActive }) =>
@@ -130,14 +138,34 @@ export default function Header() {
 
           {displayName ? (
             <>
-              {/* Username pill → username page */}
+              <NavLink
+                to="/stats"
+                className={({ isActive }) =>
+                  isActive ? "text-white" : "hover:text-white"
+                }
+              >
+                Stats
+              </NavLink>
+
+              {/* Username pill → profile/username page with avatar */}
               <Link
                 to="/username"
                 state={userId && email ? { userId, email } : undefined}
-                className="text-xs px-2 py-1 rounded bg-slate-800 border border-slate-700 hover:bg-slate-700"
+                className="flex items-center gap-2 text-xs px-2 py-1 rounded bg-slate-800 border border-slate-700 hover:bg-slate-700"
                 title="Profile / username"
               >
-                {displayName}
+                <div className="w-6 h-6 rounded-full bg-slate-900 flex items-center justify-center overflow-hidden text-[0.7rem] font-bold text-yellow-400">
+                  {avatarUrl ? (
+                    <img
+                      src={avatarUrl}
+                      alt="Avatar"
+                      className="w-full h-full object-cover"
+                    />
+                  ) : (
+                    displayName.replace("@", "")[0]?.toUpperCase()
+                  )}
+                </div>
+                <span>{displayName}</span>
               </Link>
 
               {/* Logout */}

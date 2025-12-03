@@ -1,11 +1,16 @@
 // src/pages/Username.tsx
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { supabase } from "../lib/supabase";
 
 type LocationState = {
   userId?: string;
   email?: string;
+};
+
+type ProfileRow = {
+  username: string | null;
+  avatar_url: string | null;
 };
 
 export default function Username() {
@@ -17,11 +22,35 @@ export default function Username() {
   const email = state.email ?? null;
 
   const [newUsername, setNewUsername] = useState("");
+  const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  const [uploading, setUploading] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  // ---------------- SAVE HANDLER ----------------
+  // Load current profile (username + avatar)
+  useEffect(() => {
+    if (!userId) return;
+
+    (async () => {
+      const { data, error } = await supabase
+        .from("profiles")
+        .select("username, avatar_url")
+        .eq("id", userId)
+        .maybeSingle();
+
+      if (error) {
+        console.error("[Username] load profile error:", error);
+        return;
+      }
+
+      const row = data as ProfileRow | null;
+      if (row?.username) setNewUsername(row.username);
+      if (row?.avatar_url) setAvatarUrl(row.avatar_url);
+    })();
+  }, [userId]);
+
+  // ---------------- SAVE USERNAME ----------------
   async function handleSave(e: React.FormEvent) {
     e.preventDefault();
 
@@ -49,44 +78,88 @@ export default function Username() {
     setError(null);
     setMessage(null);
 
-    console.log("[Username] upserting profile", { userId, trimmed });
-
-    // Fire-and-forget, no .catch (TS doesn't like it on PromiseLike)
-    void supabase
+    const { error } = await supabase
       .from("profiles")
-      .upsert(
-        { id: userId, username: trimmed },
-        { onConflict: "id" }
-      )
-      .then(
-        ({ error }) => {
-          if (error) {
-            console.error("[Username] upsert error:", error);
-            // we only show this if user is still on the page
-            setError(error.message || "Failed to save username.");
-          } else {
-            console.log("[Username] upsert success");
-          }
-        },
-        (err: unknown) => {
-          console.error("[Username] upsert rejected:", err);
-          const msg =
-            err instanceof Error
-              ? err.message
-              : "Failed to save username (network error).";
-          setError(msg);
-        }
-      );
+      .update({ username: trimmed })
+      .eq("id", userId);
 
-    // Immediately update UI optimistically
     setSaving(false);
-    setNewUsername("");
-    setMessage("Username saved!");
 
-    // brief pause so you see the message, then go home
-    setTimeout(() => {
-      nav("/"); // go to home / weekly picks, not /login
-    }, 600);
+    if (error) {
+      console.error("[Username] save username error:", error);
+      setError(error.message);
+      return;
+    }
+
+    setMessage("Username saved!");
+  }
+
+  // ---------------- AVATAR UPLOAD ----------------
+  async function handleAvatarChange(e: React.ChangeEvent<HTMLInputElement>) {
+    try {
+      setError(null);
+      setMessage(null);
+
+      if (!userId) {
+        setError("You must be logged in to upload an avatar.");
+        return;
+      }
+
+      const file = e.target.files?.[0];
+      if (!file) return;
+
+      if (!file.type.startsWith("image/")) {
+        setError("Please choose an image file.");
+        return;
+      }
+
+      setUploading(true);
+
+      const ext = file.name.split(".").pop() || "png";
+      const filePath = `${userId}/avatar.${ext}`;
+
+      // upload to avatars bucket (upsert-style)
+      const { error: uploadError } = await supabase.storage
+        .from("avatars")
+        .upload(filePath, file, {
+          upsert: true,
+        });
+
+      if (uploadError) {
+        console.error("[Username] avatar upload error:", uploadError);
+        setError(uploadError.message);
+        setUploading(false);
+        return;
+      }
+
+      // get public URL
+      const { data } = supabase.storage
+        .from("avatars")
+        .getPublicUrl(filePath);
+
+      const publicUrl = data.publicUrl;
+
+      // save on profile
+      const { error: updateError } = await supabase
+        .from("profiles")
+        .update({ avatar_url: publicUrl })
+        .eq("id", userId);
+
+      setUploading(false);
+
+      if (updateError) {
+        console.error("[Username] avatar profile update error:", updateError);
+        setError(updateError.message);
+        return;
+      }
+
+      setAvatarUrl(publicUrl);
+      setMessage("Avatar updated!");
+    } catch (err: any) {
+      console.error("[Username] avatar change error:", err);
+      setUploading(false);
+      setError(err?.message ?? "Failed to upload avatar.");
+    }
   }
 
   // ---------------- MISSING USER INFO ----------------
@@ -114,20 +187,55 @@ export default function Username() {
   // ---------------- MAIN UI ----------------
   return (
     <div className="min-h-[60vh] flex items-center justify-center text-slate-300">
-      <div className="p-6 w-full max-w-md bg-slate-900/60 rounded-2xl">
-        <h1 className="text-2xl font-bold text-yellow-400 mb-1">
-          Set Username
-        </h1>
-        {email && <p className="text-slate-300 mb-4">{email}</p>}
+      <div className="p-6 w-full max-w-md bg-slate-900/60 rounded-2xl space-y-6">
+        <div>
+          <h1 className="text-2xl font-bold text-yellow-400 mb-1">
+            Profile
+          </h1>
+          {email && <p className="text-slate-300 mb-2">{email}</p>}
+          <p className="text-slate-400 text-sm">
+            Set your PickForge handle and avatar. You’ll see them on the login
+            card and leaderboard.
+          </p>
+        </div>
 
-        <p className="text-slate-400 text-sm mb-3">
-          Set your PickForge handle. You’ll see it on the login card and
-          leaderboard.
-        </p>
+        {/* Avatar section */}
+        <div className="space-y-3 border border-slate-800 rounded-xl p-4 bg-slate-900/60">
+          <p className="text-sm font-semibold text-slate-200">Avatar</p>
+          <div className="flex items-center gap-4">
+            <div className="w-14 h-14 rounded-full bg-slate-800 flex items-center justify-center overflow-hidden text-xl font-bold text-yellow-400 border border-slate-700">
+              {avatarUrl ? (
+                <img
+                  src={avatarUrl}
+                  alt="Avatar"
+                  className="w-full h-full object-cover"
+                />
+              ) : (
+                (newUsername || email || "?")[0]?.toUpperCase()
+              )}
+            </div>
+            <label className="text-xs">
+              <span className="inline-flex items-center px-3 py-1 rounded-lg bg-slate-800 border border-slate-700 hover:bg-slate-700 cursor-pointer">
+                {uploading ? "Uploading…" : "Choose image"}
+              </span>
+              <input
+                type="file"
+                accept="image/*"
+                className="hidden"
+                onChange={handleAvatarChange}
+                disabled={uploading}
+              />
+            </label>
+          </div>
+          <p className="text-[0.7rem] text-slate-500">
+            Recommended: square image, at least 128×128. JPG or PNG.
+          </p>
+        </div>
 
-        <form onSubmit={handleSave} className="space-y-4 mt-2">
+        {/* Username section */}
+        <form onSubmit={handleSave} className="space-y-4">
           <div>
-            <label className="block text-sm mb-1">New username</label>
+            <label className="block text-sm mb-1">Username</label>
             <input
               type="text"
               value={newUsername}
@@ -147,9 +255,9 @@ export default function Username() {
         </form>
 
         {message && (
-          <p className="text-emerald-300 text-sm mt-3">{message}</p>
+          <p className="text-emerald-300 text-sm mt-1">{message}</p>
         )}
-        {error && <p className="text-red-400 text-sm mt-3">{error}</p>}
+        {error && <p className="text-red-400 text-sm mt-1">{error}</p>}
       </div>
     </div>
   );

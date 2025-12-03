@@ -1,10 +1,11 @@
 // src/App.tsx
 import { BrowserRouter, Routes, Route } from "react-router-dom";
-
+import "./App.css";
 import Header from "./components/Header";
 import GameBoard from "./components/GameBoard";
 import MyPicks from "./pages/MyPicks";
 import Leaderboard from "./pages/Leaderboard";
+import Stats from "./pages/Stats";
 import Login from "./pages/Login";
 import Username from "./pages/Username";
 import AuthCallback from "./pages/AuthCallback"; // must exist
@@ -20,6 +21,7 @@ export default function App() {
             <Route path="/" element={<GameBoard />} />
             <Route path="/mypicks" element={<MyPicks />} />
             <Route path="/leaderboard" element={<Leaderboard />} />
+            <Route path="/stats" element={<Stats />} />
             <Route path="/login" element={<Login />} />
             <Route path="/username" element={<Username />} />
             <Route path="/auth/callback" element={<AuthCallback />} />
