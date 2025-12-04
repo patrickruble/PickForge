@@ -100,17 +100,10 @@ export default function Header() {
   }, [username, email]);
 
   return (
-    <header className="border-b border-white/5 bg-slate-900">
-      <div
-        className="
-          mx-auto max-w-6xl
-          px-3 sm:px-4
-          py-2 sm:py-3
-          flex flex-col gap-2 sm:gap-3
-        "
-      >
-        {/* Row 1: logo + nav */}
-        <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
+    <header className="border-b border-slate-800 bg-slate-900/95 backdrop-blur">
+      <div className="mx-auto max-w-6xl px-3 sm:px-4 py-2 sm:py-3 space-y-1.5">
+        {/* ROW 1: logo + nav */}
+        <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
           {/* Logo */}
           <Link to="/" className="pf-logo text-yellow-400">
             <span className="pf-logo-lock text-[0.6rem] font-bold">🔒</span>
@@ -119,7 +112,7 @@ export default function Header() {
             </span>
           </Link>
 
-          {/* Main nav links */}
+          {/* Main nav */}
           <nav className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs sm:text-sm text-slate-200">
             <NavLink
               to="/"
@@ -161,7 +154,7 @@ export default function Header() {
           </nav>
         </div>
 
-        {/* Row 2: profile / auth bar */}
+        {/* ROW 2: profile / auth bar */}
         <div className="flex items-center justify-end gap-2">
           {displayName ? (
             <>
@@ -182,7 +175,7 @@ export default function Header() {
                     displayName.replace("@", "")[0]?.toUpperCase()
                   )}
                 </div>
-                <span className="truncate max-w-[110px] sm:max-w-none">
+                <span className="truncate max-w-[120px] sm:max-w-none">
                   {displayName}
                 </span>
               </Link>
