@@ -100,10 +100,17 @@ export default function Header() {
   }, [username, email]);
 
   return (
-    <header className="border-b border-slate-800 bg-slate-900/95 backdrop-blur">
-      <div className="mx-auto max-w-6xl px-3 sm:px-4 py-2 sm:py-3 space-y-1.5">
-        {/* ROW 1: logo + nav */}
-        <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
+    <header className="border-b border-slate-800 bg-slate-900">
+      <div
+        className="
+          mx-auto max-w-6xl
+          px-3 sm:px-4
+          py-2 sm:py-3
+          flex flex-wrap items-center gap-2 sm:gap-4
+        "
+      >
+        {/* Left: logo + nav block */}
+        <div className="flex items-center gap-3 sm:gap-4 flex-1 min-w-0">
           {/* Logo */}
           <Link to="/" className="pf-logo text-yellow-400">
             <span className="pf-logo-lock text-[0.6rem] font-bold">🔒</span>
@@ -112,7 +119,7 @@ export default function Header() {
             </span>
           </Link>
 
-          {/* Main nav */}
+          {/* Main nav links */}
           <nav className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs sm:text-sm text-slate-200">
             <NavLink
               to="/"
@@ -154,14 +161,14 @@ export default function Header() {
           </nav>
         </div>
 
-        {/* ROW 2: profile / auth bar */}
-        <div className="flex items-center justify-end gap-2">
+        {/* Right: profile + auth buttons */}
+        <div className="flex items-center gap-2 text-xs sm:text-sm">
           {displayName ? (
             <>
               <Link
                 to="/username"
                 state={userId && email ? { userId, email } : undefined}
-                className="flex items-center gap-2 text-[11px] sm:text-xs px-2 py-1 rounded bg-slate-800 border border-slate-700 hover:bg-slate-700"
+                className="flex items-center gap-2 px-2 py-1 rounded bg-slate-800 border border-slate-700 hover:bg-slate-700"
                 title="Profile / username"
               >
                 <div className="w-6 h-6 rounded-full bg-slate-900 flex items-center justify-center overflow-hidden text-[0.7rem] font-bold text-yellow-400">
@@ -175,7 +182,7 @@ export default function Header() {
                     displayName.replace("@", "")[0]?.toUpperCase()
                   )}
                 </div>
-                <span className="truncate max-w-[120px] sm:max-w-none">
+                <span className="truncate max-w-[110px] sm:max-w-none">
                   {displayName}
                 </span>
               </Link>
@@ -185,7 +192,7 @@ export default function Header() {
                   await supabase.auth.signOut();
                   navigate("/");
                 }}
-                className="bg-yellow-400 text-black px-3 py-1 rounded-xl text-xs sm:text-sm"
+                className="bg-yellow-400 text-black px-3 py-1 rounded-xl"
               >
                 Logout
               </button>
@@ -193,7 +200,7 @@ export default function Header() {
           ) : (
             <Link
               to="/login"
-              className="bg-yellow-400 text-black px-3 py-1 rounded-xl text-xs sm:text-sm"
+              className="bg-yellow-400 text-black px-3 py-1 rounded-xl"
               title="Sign in"
             >
               Login
