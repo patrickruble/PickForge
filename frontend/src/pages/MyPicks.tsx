@@ -25,7 +25,7 @@ export default function MyPicks() {
   const [rows, setRows] = useState<PickRow[]>([]);
   const [loadingPicks, setLoadingPicks] = useState(true);
 
-  // lines (don’t gate UI on these)
+  // Lines (we only use them for context; don't block UI on them)
   const { games, isLoading: linesLoading } = useLines("nfl");
 
   // id -> minimal game info
@@ -58,13 +58,16 @@ export default function MyPicks() {
         if (!mounted) return;
         setUid(session?.user?.id ?? null);
       });
+
       return () => sub.subscription.unsubscribe();
     }
 
     const cleanup = init();
     return () => {
       mounted = false;
-      if (cleanup && typeof (cleanup as any) === "function") (cleanup as any)();
+      if (cleanup && typeof (cleanup as any) === "function") {
+        (cleanup as any)();
+      }
     };
   }, []);
 
@@ -107,39 +110,77 @@ export default function MyPicks() {
 
   const weekNum = getNflWeekNumber(new Date());
 
-  // Top-level loading
+  // -------- Loading state --------
+
   if (!uid || loadingPicks) {
     return (
-      <div className="px-3 py-5 sm:px-4 sm:py-6 text-slate-300 max-w-4xl mx-auto">
-        <h1 className="text-2xl font-bold text-yellow-400 mb-4">
-          My Picks (Week {weekNum})
-        </h1>
-        Loading…
+      <div className="max-w-4xl mx-auto px-3 sm:px-4 py-6 text-slate-300">
+        <header className="mb-4">
+          <h1 className="text-2xl sm:text-3xl font-semibold text-yellow-400">
+            My Picks — Week {weekNum}
+          </h1>
+          <p className="text-xs sm:text-sm text-slate-400 mt-1">
+            Fetching your picks for this week…
+          </p>
+        </header>
+
+        <div className="space-y-2">
+          {[0, 1, 2].map((i) => (
+            <div
+              key={i}
+              className="h-16 rounded-xl bg-slate-900/80 border border-slate-800 animate-pulse"
+            />
+          ))}
+        </div>
       </div>
     );
   }
+
+  // -------- Empty state --------
 
   if (!rows.length) {
     return (
-      <div className="px-3 py-5 sm:px-4 sm:py-6 text-slate-300 max-w-4xl mx-auto">
-        <h1 className="text-2xl font-bold text-yellow-400 mb-4">
-          My Picks (Week {weekNum})
-        </h1>
-        No picks yet for this week.{" "}
-        <a className="text-yellow-400 underline" href="/">
-          Go make your picks →
-        </a>
+      <div className="max-w-4xl mx-auto px-3 sm:px-4 py-6 text-slate-300">
+        <header className="mb-3">
+          <h1 className="text-2xl sm:text-3xl font-semibold text-yellow-400">
+            My Picks — Week {weekNum}
+          </h1>
+          <p className="text-xs sm:text-sm text-slate-400 mt-1">
+            You haven't locked anything in yet this week.
+          </p>
+        </header>
+
+        <p className="text-sm text-slate-300">
+          Head over to{" "}
+          <a href="/" className="text-yellow-400 underline">
+            Weekly Picks
+          </a>{" "}
+          to make your selections.
+        </p>
       </div>
     );
   }
 
-  return (
-    <div className="px-3 py-5 sm:px-4 sm:py-6 max-w-4xl mx-auto">
-      <h1 className="text-2xl font-bold text-yellow-400 mb-4">
-        My Picks (Week {weekNum})
-      </h1>
+  // -------- Main UI --------
 
-      <ul className="space-y-3 sm:space-y-4">
+  return (
+    <div className="max-w-4xl mx-auto px-3 sm:px-4 py-6 text-slate-100">
+      <header className="mb-4 sm:mb-5 flex flex-col sm:flex-row sm:items-end sm:justify-between gap-2">
+        <div>
+          <h1 className="text-2xl sm:text-3xl font-semibold text-yellow-400">
+            My Picks — Week {weekNum}
+          </h1>
+          <p className="text-xs sm:text-sm text-slate-400 mt-1">
+            These are your saved picks for this week’s NFL games.
+          </p>
+        </div>
+        <div className="text-[11px] sm:text-xs text-slate-400">
+          <span className="font-semibold text-slate-100">{rows.length}</span>{" "}
+          picks locked in.
+        </div>
+      </header>
+
+      <ul className="space-y-3">
         {rows.map((r) => {
           const gm = gameMap.get(r.game_id);
           const home = gm?.home ?? "HOME";
@@ -175,57 +216,65 @@ export default function MyPicks() {
           }
 
           const pickedIsAway = r.side === "away";
+
           const pickedPill =
-            "px-2 py-0.5 rounded bg-yellow-400/15 text-yellow-300 border border-yellow-600/40";
-          const normal = "text-slate-200";
+            "px-2.5 py-1 rounded-full bg-yellow-400/15 text-yellow-300 border border-yellow-600/40";
+          const normal =
+            "px-2.5 py-1 rounded-full bg-slate-800/80 text-slate-100 border border-slate-700/70";
 
           return (
             <li
               key={`${r.game_id}-${r.side}`}
-              className="rounded-2xl bg-slate-900/80 border border-slate-800 px-3 py-3 sm:px-4 sm:py-4"
+              className="rounded-2xl p-3 sm:p-4 bg-slate-950/80 border border-slate-800 shadow-sm shadow-black/30"
             >
-              <div className="flex flex-col gap-2 sm:grid sm:grid-cols-[minmax(0,2.1fr),minmax(0,1.3fr)] sm:items-center sm:gap-3">
-                {/* Teams block */}
-                <div className="flex flex-wrap items-center gap-2 sm:gap-3">
-                  <div className={pickedIsAway ? pickedPill : normal}>
-                    <div className="flex items-center gap-2">
-                      <TeamBadge name={away} align="left" />
+              <div className="flex flex-col gap-2 sm:gap-3 sm:flex-row sm:items-center sm:justify-between">
+                {/* Left: matchup */}
+                <div className="flex items-center gap-3 sm:gap-4 min-w-0">
+                  <div className="flex flex-col gap-1 min-w-0">
+                    <div className="flex items-center gap-2 min-w-0">
+                      <div className={pickedIsAway ? pickedPill : normal}>
+                        <div className="flex items-center gap-2 min-w-0">
+                          <TeamBadge name={away} align="left" />
+                        </div>
+                      </div>
                     </div>
-                  </div>
-
-                  <span className="text-slate-400 text-xs sm:text-sm">vs</span>
-
-                  <div className={!pickedIsAway ? pickedPill : normal}>
-                    <div className="flex items-center gap-2">
-                      <TeamBadge name={home} align="right" />
+                    <div className="flex items-center gap-2 min-w-0">
+                      <span className="text-[10px] uppercase text-slate-500">
+                        vs
+                      </span>
+                      <div className={!pickedIsAway ? pickedPill : normal}>
+                        <div className="flex items-center gap-2 min-w-0">
+                          <TeamBadge name={home} align="right" />
+                        </div>
+                      </div>
                     </div>
                   </div>
                 </div>
 
-                {/* Side + line info */}
-                <div className="flex flex-col items-end gap-1 text-right text-xs sm:text-sm mt-1 sm:mt-0">
-                  <span className="px-2 py-0.5 rounded-full border border-slate-600 text-[10px] sm:text-xs uppercase tracking-wide text-slate-300">
-                    {r.side}
-                  </span>
+                {/* Right: side + line info */}
+                <div className="text-right min-w-[40%] sm:min-w-[32%]">
+                  <div className="text-[11px] uppercase text-slate-400 mb-0.5">
+                    You picked{" "}
+                    <span className="font-semibold text-slate-100">
+                      {pickedIsAway ? away : home}
+                    </span>
+                  </div>
                   {label && (
-                    <div className="text-[11px] sm:text-xs text-slate-400">
-                      {label}
-                    </div>
+                    <div className="text-[11px] text-slate-400">{label}</div>
                   )}
+                  <div className="mt-1 text-[11px] text-slate-500">{when}</div>
                 </div>
               </div>
 
-              <div className="mt-2 text-[11px] sm:text-xs text-slate-500">
-                {when}
-              </div>
+              {linesLoading && (
+                <p className="mt-2 text-[10px] text-slate-500">
+                  Updating live lines…
+                </p>
+              )}
             </li>
           );
         })}
       </ul>
-
-      {linesLoading && (
-        <p className="mt-3 text-xs text-slate-400">Updating live lines…</p>
-      )}
     </div>
   );
 }
