@@ -99,7 +99,6 @@ export default function Header() {
     return null;
   }, [username, email]);
 
-  // Reusable user bar
   const userBar = (
     <>
       {displayName ? (
@@ -151,9 +150,8 @@ export default function Header() {
   return (
     <header className="border-b border-slate-800 bg-slate-900">
       <div className="mx-auto max-w-6xl px-3 sm:px-4 py-2 sm:py-3 space-y-2">
-        {/* Row 1: logo + (desktop user bar) */}
+        {/* Row 1: PickForge logo + ForgeMaster / Logout */}
         <div className="flex items-center justify-between gap-3">
-          {/* Logo */}
           <Link to="/" className="pf-logo text-yellow-400">
             <span className="pf-logo-lock text-[0.6rem] font-bold">🔒</span>
             <span className="pf-logo-text font-display text-xl sm:text-2xl tracking-[0.12em] uppercase">
@@ -161,8 +159,7 @@ export default function Header() {
             </span>
           </Link>
 
-          {/* Desktop user bar (hidden on mobile) */}
-          <div className="hidden sm:flex items-center gap-2">
+          <div className="flex items-center gap-2">
             {userBar}
           </div>
         </div>
@@ -207,11 +204,6 @@ export default function Header() {
             </NavLink>
           )}
         </nav>
-
-        {/* Row 3: mobile user bar (hidden on desktop) */}
-        <div className="flex sm:hidden items-center justify-end gap-2">
-          {userBar}
-        </div>
       </div>
     </header>
   );
