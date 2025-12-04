@@ -1,6 +1,7 @@
+// src/pages/Leaderboard.tsx
 import { useEffect, useMemo, useState } from "react";
 import { supabase } from "../lib/supabase";
-import { getNflWeekNumber } from "../hooks/useRemotePicks";
+import { getNflWeekNumber, currentNflWeekWindow } from "../hooks/useRemotePicks";
 
 type League = "nfl" | "ncaaf";
 
@@ -22,8 +23,9 @@ type LeaderItem = {
   profile?: ProfileInfo;
 };
 
+const league: League = "nfl";
+
 export default function Leaderboard() {
-  const league: League = "nfl";
   const week = useMemo(() => getNflWeekNumber(new Date()), []);
   const [rows, setRows] = useState<PickRow[]>([]);
   const [loading, setLoading] = useState(true);
@@ -33,13 +35,22 @@ export default function Leaderboard() {
     {}
   );
 
+  // Nicely formatted week date range
+  const weekWindow = useMemo(() => {
+    const { weekStart, weekEnd } = currentNflWeekWindow(new Date());
+    const fmt: Intl.DateTimeFormatOptions = { month: "short", day: "numeric" };
+    return `${weekStart.toLocaleDateString(undefined, fmt)} – ${weekEnd.toLocaleDateString(
+      undefined,
+      fmt
+    )}`;
+  }, []);
+
   useEffect(() => {
     let cancelled = false;
 
     async function load() {
       setLoading(true);
 
-      // Pull all picks for this league/week (no need to be signed-in)
       const { data, error } = await supabase
         .from("picks")
         .select("user_id, game_id, week, league")
@@ -60,7 +71,7 @@ export default function Leaderboard() {
 
     load();
 
-    // Realtime: refresh when any pick changes for this week
+    // Realtime: refresh when any pick changes
     const channel = supabase
       .channel(`leaderboard-${league}-${week}`)
       .on(
@@ -74,7 +85,7 @@ export default function Leaderboard() {
       supabase.removeChannel(channel);
       cancelled = true;
     };
-  }, [league, week]);
+  }, [week]);
 
   // Aggregate in-memory: total picks per user for this week
   const aggregated: LeaderItem[] = useMemo(() => {
@@ -93,12 +104,11 @@ export default function Leaderboard() {
     });
 
     list.sort((a, b) => b.picks - a.picks);
-    return list.slice(0, 100); // cap to top 100 for safety
+    return list.slice(0, 100);
   }, [rows, profilesMap]);
 
   // Resolve usernames + avatars from profiles
   useEffect(() => {
-    // Collect user_ids that we don't have profile info for yet
     const unknownIds = aggregated
       .filter((i) => profilesMap[i.user_id] === undefined)
       .map((i) => i.user_id);
@@ -141,26 +151,80 @@ export default function Leaderboard() {
     };
   }, [aggregated, profilesMap]);
 
-  if (loading) {
-    return <div className="p-6 text-slate-300">Loading leaderboard…</div>;
-  }
+  const totalPlayers = useMemo(
+    () => new Set(rows.map((r) => r.user_id)).size,
+    [rows]
+  );
 
-  if (!rows.length) {
+  // -------- Loading / empty states --------
+
+  if (loading && !rows.length) {
     return (
-      <div className="p-6 text-slate-300">
-        <h1 className="text-2xl font-bold text-yellow-400 mb-3">
-          Leaderboard
-        </h1>
-        <p>No picks have been made yet for Week {week}.</p>
+      <div className="px-4 py-8 max-w-4xl mx-auto">
+        <h1 className="text-2xl font-bold text-yellow-400 mb-2">Leaderboard</h1>
+        <p className="text-sm text-slate-400 mb-4">
+          NFL Week {week} · {weekWindow}
+        </p>
+
+        <div className="space-y-2">
+          {[0, 1, 2, 3].map((i) => (
+            <div
+              key={i}
+              className="animate-pulse rounded-xl bg-slate-800/70 h-14"
+            />
+          ))}
+        </div>
       </div>
     );
   }
 
+  if (!rows.length) {
+    return (
+      <div className="px-4 py-8 max-w-4xl mx-auto">
+        <h1 className="text-2xl font-bold text-yellow-400 mb-2">Leaderboard</h1>
+        <p className="text-sm text-slate-400 mb-4">
+          NFL Week {week} · {weekWindow}
+        </p>
+        <p className="text-slate-300">
+          No picks have been made yet this week. Be the first to lock something in on
+          Weekly Picks.
+        </p>
+      </div>
+    );
+  }
+
+  // -------- Main UI --------
+
   return (
-    <div className="p-6">
-      <h1 className="text-2xl font-bold text-yellow-400 mb-4">
-        Leaderboard — Week {week}
-      </h1>
+    <section className="px-4 py-6 max-w-4xl mx-auto">
+      <header className="mb-4 flex flex-col sm:flex-row sm:items-end sm:justify-between gap-2">
+        <div>
+          <h1 className="text-2xl font-bold text-yellow-400">Leaderboard</h1>
+          <p className="text-sm text-slate-400">
+            NFL Week {week} · {weekWindow}
+          </p>
+        </div>
+
+        <div className="flex gap-4 text-xs sm:text-sm text-slate-400">
+          <div>
+            <span className="font-semibold text-slate-200">{totalPlayers}</span>{" "}
+            players
+          </div>
+          <div>
+            <span className="font-semibold text-slate-200">
+              {rows.length}
+            </span>{" "}
+            total picks
+          </div>
+        </div>
+      </header>
+
+      {/* Desktop column headers */}
+      <div className="hidden sm:grid grid-cols-[auto,1fr,auto] text-xs text-slate-400 px-3 pb-1">
+        <span className="uppercase tracking-wide">Rank</span>
+        <span className="uppercase tracking-wide">Player</span>
+        <span className="text-right uppercase tracking-wide">Picks</span>
+      </div>
 
       <ol className="space-y-2">
         {aggregated.map((item, idx) => {
@@ -171,48 +235,69 @@ export default function Leaderboard() {
               ? username
               : `user_${item.user_id.slice(0, 6)}`;
 
-          const initial = (username?.[0] ?? "?").toUpperCase();
+          const initial = (label[0] ?? "?").toUpperCase();
+          const rank = idx + 1;
+
+          const rankStyles =
+            rank === 1
+              ? "border-yellow-400/80 shadow-yellow-400/20"
+              : rank === 2
+              ? "border-slate-400/70"
+              : rank === 3
+              ? "border-amber-600/70"
+              : "border-slate-700/60";
 
           return (
             <li
               key={item.user_id}
-              className="rounded-xl p-3 bg-slate-800/70 flex items-center justify-between"
+              className={`rounded-2xl bg-slate-900/80 border ${rankStyles} px-3 py-2 sm:px-4 sm:py-3 flex items-center justify-between gap-3`}
             >
-              <div className="flex items-center gap-3">
-                <span className="text-sm w-6 text-right text-slate-400">
-                  #{idx + 1}
-                </span>
+              {/* left side */}
+              <div className="flex items-center gap-3 min-w-0">
+                <div className="w-7 text-xs font-semibold text-slate-400 text-right">
+                  #{rank}
+                </div>
 
-                {/* Avatar + name */}
-                <div className="flex items-center gap-2">
-                  <div className="w-8 h-8 rounded-full overflow-hidden bg-slate-700 flex items-center justify-center text-xs font-semibold text-slate-100">
-                    {profile?.avatar_url ? (
-                      <img
-                        src={profile.avatar_url}
-                        alt={label}
-                        className="w-full h-full object-cover"
-                      />
-                    ) : (
-                      initial
-                    )}
-                  </div>
-                  <span className="font-semibold">{label}</span>
+                <div className="w-8 h-8 rounded-full overflow-hidden bg-slate-700 flex items-center justify-center text-xs font-semibold text-slate-100 border border-slate-700">
+                  {profile?.avatar_url ? (
+                    <img
+                      src={profile.avatar_url}
+                      alt={label}
+                      className="w-full h-full object-cover"
+                    />
+                  ) : (
+                    initial
+                  )}
+                </div>
+
+                <div className="flex flex-col min-w-0">
+                  <span className="font-semibold text-sm text-slate-100 truncate">
+                    {label}
+                  </span>
+                  <span className="text-[11px] text-slate-500 truncate">
+                    @{label.toLowerCase().replace(/\s+/g, "")}
+                  </span>
                 </div>
               </div>
 
-              <div className="text-sm">
-                <span className="text-yellow-400 font-mono">{item.picks}</span>{" "}
-                <span className="text-slate-400">picks</span>
+              {/* right side */}
+              <div className="text-right text-xs sm:text-sm">
+                <span className="font-mono text-yellow-400 text-base sm:text-lg">
+                  {item.picks}
+                </span>
+                <span className="ml-1 text-slate-400 text-[11px] sm:text-xs">
+                  picks
+                </span>
               </div>
             </li>
           );
         })}
       </ol>
 
-      <p className="text-xs text-slate-500 mt-4">
-        * Currently ranked by total picks this week. We can later rank by win
-        rate, units won, or ROI once outcomes are tracked.
+      <p className="text-[11px] text-slate-500 mt-4">
+        Currently ranked by total picks submitted for this week. Future versions can
+        track win rate and ROI once results are stored.
       </p>
-    </div>
+    </section>
   );
 }
