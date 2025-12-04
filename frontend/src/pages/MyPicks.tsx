@@ -107,10 +107,10 @@ export default function MyPicks() {
 
   const weekNum = getNflWeekNumber(new Date());
 
-  // Top-level loading (only while we’re establishing uid or fetching picks)
+  // Top-level loading
   if (!uid || loadingPicks) {
     return (
-      <div className="p-6 text-slate-300">
+      <div className="px-3 py-5 sm:px-4 sm:py-6 text-slate-300 max-w-4xl mx-auto">
         <h1 className="text-2xl font-bold text-yellow-400 mb-4">
           My Picks (Week {weekNum})
         </h1>
@@ -121,7 +121,7 @@ export default function MyPicks() {
 
   if (!rows.length) {
     return (
-      <div className="p-6 text-slate-300">
+      <div className="px-3 py-5 sm:px-4 sm:py-6 text-slate-300 max-w-4xl mx-auto">
         <h1 className="text-2xl font-bold text-yellow-400 mb-4">
           My Picks (Week {weekNum})
         </h1>
@@ -184,9 +184,9 @@ export default function MyPicks() {
               key={`${r.game_id}-${r.side}`}
               className="rounded-2xl bg-slate-900/80 border border-slate-800 px-3 py-3 sm:px-4 sm:py-4"
             >
-              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 sm:gap-3">
-                {/* Teams */}
-                <div className="flex items-center gap-2 sm:gap-3">
+              <div className="flex flex-col gap-2 sm:grid sm:grid-cols-[minmax(0,2.1fr),minmax(0,1.3fr)] sm:items-center sm:gap-3">
+                {/* Teams block */}
+                <div className="flex flex-wrap items-center gap-2 sm:gap-3">
                   <div className={pickedIsAway ? pickedPill : normal}>
                     <div className="flex items-center gap-2">
                       <TeamBadge name={away} align="left" />
@@ -203,8 +203,10 @@ export default function MyPicks() {
                 </div>
 
                 {/* Side + line info */}
-                <div className="text-right text-xs sm:text-sm mt-1 sm:mt-0">
-                  <div className="uppercase text-slate-400">{r.side}</div>
+                <div className="flex flex-col items-end gap-1 text-right text-xs sm:text-sm mt-1 sm:mt-0">
+                  <span className="px-2 py-0.5 rounded-full border border-slate-600 text-[10px] sm:text-xs uppercase tracking-wide text-slate-300">
+                    {r.side}
+                  </span>
                   {label && (
                     <div className="text-[11px] sm:text-xs text-slate-400">
                       {label}
@@ -213,7 +215,7 @@ export default function MyPicks() {
                 </div>
               </div>
 
-              <div className="mt-1 text-[11px] sm:text-xs text-slate-400">
+              <div className="mt-2 text-[11px] sm:text-xs text-slate-500">
                 {when}
               </div>
             </li>

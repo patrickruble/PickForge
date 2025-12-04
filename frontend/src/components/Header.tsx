@@ -160,7 +160,7 @@ export default function Header() {
         </nav>
 
         {/* Right side: profile + auth buttons */}
-        <div className="ml-auto flex flex-wrap items-center gap-2">
+        <div className="ml-auto w-full sm:w-auto flex items-center justify-end gap-2 mt-2 sm:mt-0">
           {displayName ? (
             <>
               <Link
