@@ -8,9 +8,8 @@ function isDark(hex: string): boolean {
   const r = parseInt(c.substring(0, 2), 16) || 0;
   const g = parseInt(c.substring(2, 4), 16) || 0;
   const b = parseInt(c.substring(4, 6), 16) || 0;
-  // Perceived brightness formula
   const brightness = (r * 299 + g * 587 + b * 114) / 1000;
-  return brightness < 140; // lower means darker color
+  return brightness < 140;
 }
 
 type Align = "left" | "right";
@@ -41,13 +40,11 @@ export default function TeamBadge({
       ? "flex items-center gap-2 justify-end text-right"
       : "flex items-center gap-2";
 
-  // Slightly smaller + responsive text, but with tight line height
   const textSize =
     size === "sm"
       ? "text-[11px] sm:text-xs"
       : "text-xs sm:text-sm";
 
-  // Constrain width so long names wrap nicely into at most 2 lines
   const namePillClasses = `
     ${textSize}
     font-semibold
@@ -55,13 +52,13 @@ export default function TeamBadge({
     rounded
     leading-tight
     block
-    max-w-[150px] sm:max-w-[190px]
+    max-w-[120px] sm:max-w-[180px]
+    whitespace-normal
     break-words
   `;
 
   const logoWrapperClasses =
     "h-8 w-8 md:h-9 md:w-9 rounded-full flex items-center justify-center ring-1 ring-black/20 bg-white";
-
   const logoImgClasses = "h-6 w-6 md:h-7 md:w-7 object-contain";
 
   return (
