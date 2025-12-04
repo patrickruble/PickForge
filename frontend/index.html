@@ -2,14 +2,68 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <link rel="icon" type="image/svg+xml" href="/vite.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+
+    <!-- =====================
+         FAVICONS / ICONS
+    ====================== -->
+    <!-- Modern browsers prefer SVG -->
+    <link rel="icon" type="image/svg+xml" href="/pickforge-icon.svg" />
+
+    <!-- Fallback for Safari, Firefox, Windows -->
+    <link rel="alternate icon" href="/pickforge-icon.png" type="image/png" />
+
+    <!-- Apple Touch Icon (iOS home screen) -->
+    <link rel="apple-touch-icon" href="/pickforge-icon.png" sizes="180x180" />
+
+    <!-- =====================
+         FONTS
+    ====================== -->
     <link
-  href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Inter:wght@300;400;500;600;700&display=swap"
-  rel="stylesheet"
-/>
-    <title>PickForge</title>
+      href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Inter:wght@300;400;500;600;700&display=swap"
+      rel="stylesheet"
+    />
+
+    <!-- =====================
+         TITLE + DESCRIPTION
+    ====================== -->
+    <title>PickForge — NFL Picks with Friends</title>
+
+    <meta
+      name="description"
+      content="Free NFL pick’em site. Make your weekly spread picks, track how you stack up on the leaderboard, and compete with your friends."
+    />
+
+    <!-- Theme color (Chrome, Android, Safari) -->
+    <meta name="theme-color" content="#020617" />
+
+    <!-- =====================
+         OPEN GRAPH (Link Previews)
+    ====================== -->
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="PickForge" />
+    <meta property="og:title" content="PickForge — NFL Picks with Friends" />
+    <meta
+      property="og:description"
+      content="Make weekly NFL spread picks, compete with friends, and climb the leaderboard."
+    />
+    <meta property="og:url" content="https://pickforgepicks.com" />
+
+    <!-- Replace with your custom OG card once we design it -->
+    <meta property="og:image" content="https://pickforgepicks.com/og-card.png" />
+
+    <!-- =====================
+         TWITTER CARD
+    ====================== -->
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="PickForge — NFL Picks with Friends" />
+    <meta
+      name="twitter:description"
+      content="Free NFL pick’em + leaderboard. Make your weekly picks and compete with friends."
+    />
+    <meta name="twitter:image" content="https://pickforgepicks.com/og-card.png" />
   </head>
+
   <body>
     <div id="root"></div>
     <script type="module" src="/src/main.jsx"></script>
