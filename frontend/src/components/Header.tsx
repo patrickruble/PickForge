@@ -99,18 +99,60 @@ export default function Header() {
     return null;
   }, [username, email]);
 
+  // Reusable user bar
+  const userBar = (
+    <>
+      {displayName ? (
+        <>
+          <Link
+            to="/username"
+            state={userId && email ? { userId, email } : undefined}
+            className="flex items-center gap-2 px-2 py-1 rounded bg-slate-800 border border-slate-700 hover:bg-slate-700 text-[11px] sm:text-xs"
+            title="Profile / username"
+          >
+            <div className="w-6 h-6 rounded-full bg-slate-900 flex items-center justify-center overflow-hidden text-[0.7rem] font-bold text-yellow-400">
+              {avatarUrl ? (
+                <img
+                  src={avatarUrl}
+                  alt="Avatar"
+                  className="w-full h-full object-cover"
+                />
+              ) : (
+                displayName.replace("@", "")[0]?.toUpperCase()
+              )}
+            </div>
+            <span className="truncate max-w-[110px] sm:max-w-none">
+              {displayName}
+            </span>
+          </Link>
+
+          <button
+            onClick={async () => {
+              await supabase.auth.signOut();
+              navigate("/");
+            }}
+            className="bg-yellow-400 text-black px-3 py-1 rounded-xl text-xs sm:text-sm"
+          >
+            Logout
+          </button>
+        </>
+      ) : (
+        <Link
+          to="/login"
+          className="bg-yellow-400 text-black px-3 py-1 rounded-xl text-xs sm:text-sm"
+          title="Sign in"
+        >
+          Login
+        </Link>
+      )}
+    </>
+  );
+
   return (
     <header className="border-b border-slate-800 bg-slate-900">
-      <div
-        className="
-          mx-auto max-w-6xl
-          px-3 sm:px-4
-          py-2 sm:py-3
-          flex flex-wrap items-center gap-2 sm:gap-4
-        "
-      >
-        {/* Left: logo + nav block */}
-        <div className="flex items-center gap-3 sm:gap-4 flex-1 min-w-0">
+      <div className="mx-auto max-w-6xl px-3 sm:px-4 py-2 sm:py-3 space-y-2">
+        {/* Row 1: logo + (desktop user bar) */}
+        <div className="flex items-center justify-between gap-3">
           {/* Logo */}
           <Link to="/" className="pf-logo text-yellow-400">
             <span className="pf-logo-lock text-[0.6rem] font-bold">🔒</span>
@@ -119,93 +161,56 @@ export default function Header() {
             </span>
           </Link>
 
-          {/* Main nav links */}
-          <nav className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs sm:text-sm text-slate-200">
-            <NavLink
-              to="/"
-              className={({ isActive }) =>
-                isActive ? "text-white" : "hover:text-white"
-              }
-            >
-              Weekly Picks
-            </NavLink>
-
-            <NavLink
-              to="/mypicks"
-              className={({ isActive }) =>
-                isActive ? "text-white" : "hover:text-white"
-              }
-            >
-              My Picks
-            </NavLink>
-
-            <NavLink
-              to="/leaderboard"
-              className={({ isActive }) =>
-                isActive ? "text-white" : "hover:text-white"
-              }
-            >
-              Leaderboard
-            </NavLink>
-
-            {displayName && (
-              <NavLink
-                to="/stats"
-                className={({ isActive }) =>
-                  isActive ? "text-white" : "hover:text-white"
-                }
-              >
-                Stats
-              </NavLink>
-            )}
-          </nav>
+          {/* Desktop user bar (hidden on mobile) */}
+          <div className="hidden sm:flex items-center gap-2">
+            {userBar}
+          </div>
         </div>
 
-        {/* Right: profile + auth buttons */}
-        <div className="flex items-center gap-2 text-xs sm:text-sm">
-          {displayName ? (
-            <>
-              <Link
-                to="/username"
-                state={userId && email ? { userId, email } : undefined}
-                className="flex items-center gap-2 px-2 py-1 rounded bg-slate-800 border border-slate-700 hover:bg-slate-700"
-                title="Profile / username"
-              >
-                <div className="w-6 h-6 rounded-full bg-slate-900 flex items-center justify-center overflow-hidden text-[0.7rem] font-bold text-yellow-400">
-                  {avatarUrl ? (
-                    <img
-                      src={avatarUrl}
-                      alt="Avatar"
-                      className="w-full h-full object-cover"
-                    />
-                  ) : (
-                    displayName.replace("@", "")[0]?.toUpperCase()
-                  )}
-                </div>
-                <span className="truncate max-w-[110px] sm:max-w-none">
-                  {displayName}
-                </span>
-              </Link>
+        {/* Row 2: nav */}
+        <nav className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs sm:text-sm text-slate-200">
+          <NavLink
+            to="/"
+            className={({ isActive }) =>
+              isActive ? "text-white" : "hover:text-white"
+            }
+          >
+            Weekly Picks
+          </NavLink>
 
-              <button
-                onClick={async () => {
-                  await supabase.auth.signOut();
-                  navigate("/");
-                }}
-                className="bg-yellow-400 text-black px-3 py-1 rounded-xl"
-              >
-                Logout
-              </button>
-            </>
-          ) : (
-            <Link
-              to="/login"
-              className="bg-yellow-400 text-black px-3 py-1 rounded-xl"
-              title="Sign in"
+          <NavLink
+            to="/mypicks"
+            className={({ isActive }) =>
+              isActive ? "text-white" : "hover:text-white"
+            }
+          >
+            My Picks
+          </NavLink>
+
+          <NavLink
+            to="/leaderboard"
+            className={({ isActive }) =>
+              isActive ? "text-white" : "hover:text-white"
+            }
+          >
+            Leaderboard
+          </NavLink>
+
+          {displayName && (
+            <NavLink
+              to="/stats"
+              className={({ isActive }) =>
+                isActive ? "text-white" : "hover:text-white"
+              }
             >
-              Login
-            </Link>
+              Stats
+            </NavLink>
           )}
+        </nav>
+
+        {/* Row 3: mobile user bar (hidden on desktop) */}
+        <div className="flex sm:hidden items-center justify-end gap-2">
+          {userBar}
         </div>
       </div>
     </header>
