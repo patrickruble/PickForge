@@ -9,7 +9,7 @@ function isDark(hex: string): boolean {
   const g = parseInt(c.substring(2, 4), 16) || 0;
   const b = parseInt(c.substring(4, 6), 16) || 0;
   const brightness = (r * 299 + g * 587 + b * 114) / 1000;
-  return brightness < 140;
+  return brightness < 140; // lower means darker color
 }
 
 type Align = "left" | "right";
@@ -40,25 +40,22 @@ export default function TeamBadge({
       ? "flex items-center gap-2 justify-end text-right"
       : "flex items-center gap-2";
 
-  const textSize =
-    size === "sm"
-      ? "text-[11px] sm:text-xs"
-      : "text-xs sm:text-sm";
+  const textSize = size === "sm" ? "text-xs" : "text-sm";
 
-  const namePillClasses = `
+  const nameClasses = `
     ${textSize}
     font-semibold
-    px-2 py-0.5
+    px-2
+    py-0.5
     rounded
     leading-tight
-    block
-    max-w-[120px] sm:max-w-[180px]
-    whitespace-normal
-    break-words
+    inline-flex
+    items-center
   `;
 
   const logoWrapperClasses =
     "h-8 w-8 md:h-9 md:w-9 rounded-full flex items-center justify-center ring-1 ring-black/20 bg-white";
+
   const logoImgClasses = "h-6 w-6 md:h-7 md:w-7 object-contain";
 
   return (
@@ -70,7 +67,7 @@ export default function TeamBadge({
           </div>
           {showName && (
             <span
-              className={namePillClasses}
+              className={nameClasses}
               style={{
                 color: textColor,
                 backgroundColor: bgColor,
@@ -86,7 +83,7 @@ export default function TeamBadge({
         <>
           {showName && (
             <span
-              className={namePillClasses}
+              className={nameClasses}
               style={{
                 color: textColor,
                 backgroundColor: bgColor,
