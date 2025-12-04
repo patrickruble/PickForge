@@ -106,61 +106,63 @@ export default function Header() {
           mx-auto max-w-6xl
           px-3 sm:px-4
           py-2 sm:py-3
-          flex flex-wrap items-center
-          gap-2 sm:gap-4
+          flex flex-col gap-2 sm:gap-3
         "
       >
-        {/* Logo */}
-        <Link to="/" className="pf-logo text-yellow-400">
-          <span className="pf-logo-lock text-[0.6rem] font-bold">🔒</span>
-          <span className="pf-logo-text font-display text-xl sm:text-2xl tracking-[0.12em] uppercase">
-            PickForge
-          </span>
-        </Link>
+        {/* Row 1: logo + nav */}
+        <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
+          {/* Logo */}
+          <Link to="/" className="pf-logo text-yellow-400">
+            <span className="pf-logo-lock text-[0.6rem] font-bold">🔒</span>
+            <span className="pf-logo-text font-display text-xl sm:text-2xl tracking-[0.12em] uppercase">
+              PickForge
+            </span>
+          </Link>
 
-        {/* Main nav links */}
-        <nav className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs sm:text-sm text-slate-200">
-          <NavLink
-            to="/"
-            className={({ isActive }) =>
-              isActive ? "text-white" : "hover:text-white"
-            }
-          >
-            Weekly Picks
-          </NavLink>
-
-          <NavLink
-            to="/mypicks"
-            className={({ isActive }) =>
-              isActive ? "text-white" : "hover:text-white"
-            }
-          >
-            My Picks
-          </NavLink>
-
-          <NavLink
-            to="/leaderboard"
-            className={({ isActive }) =>
-              isActive ? "text-white" : "hover:text-white"
-            }
-          >
-            Leaderboard
-          </NavLink>
-
-          {displayName && (
+          {/* Main nav links */}
+          <nav className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs sm:text-sm text-slate-200">
             <NavLink
-              to="/stats"
+              to="/"
               className={({ isActive }) =>
                 isActive ? "text-white" : "hover:text-white"
               }
             >
-              Stats
+              Weekly Picks
             </NavLink>
-          )}
-        </nav>
 
-        {/* Right side: profile + auth buttons */}
-        <div className="ml-auto w-full sm:w-auto flex items-center justify-end gap-2 mt-2 sm:mt-0">
+            <NavLink
+              to="/mypicks"
+              className={({ isActive }) =>
+                isActive ? "text-white" : "hover:text-white"
+              }
+            >
+              My Picks
+            </NavLink>
+
+            <NavLink
+              to="/leaderboard"
+              className={({ isActive }) =>
+                isActive ? "text-white" : "hover:text-white"
+              }
+            >
+              Leaderboard
+            </NavLink>
+
+            {displayName && (
+              <NavLink
+                to="/stats"
+                className={({ isActive }) =>
+                  isActive ? "text-white" : "hover:text-white"
+                }
+              >
+                Stats
+              </NavLink>
+            )}
+          </nav>
+        </div>
+
+        {/* Row 2: profile / auth bar */}
+        <div className="flex items-center justify-end gap-2">
           {displayName ? (
             <>
               <Link
@@ -180,7 +182,7 @@ export default function Header() {
                     displayName.replace("@", "")[0]?.toUpperCase()
                   )}
                 </div>
-                <span className="truncate max-w-[90px] sm:max-w-none">
+                <span className="truncate max-w-[110px] sm:max-w-none">
                   {displayName}
                 </span>
               </Link>
