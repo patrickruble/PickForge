@@ -101,16 +101,25 @@ export default function Header() {
 
   return (
     <header className="border-b border-white/5 bg-slate-900">
-      <div className="mx-auto max-w-6xl px-4 py-4 flex items-center justify-between">
-        {/* Animated PickForge logo */}
+      <div
+        className="
+          mx-auto max-w-6xl
+          px-3 sm:px-4
+          py-2 sm:py-3
+          flex flex-wrap items-center
+          gap-2 sm:gap-4
+        "
+      >
+        {/* Logo */}
         <Link to="/" className="pf-logo text-yellow-400">
           <span className="pf-logo-lock text-[0.6rem] font-bold">🔒</span>
-          <span className="pf-logo-text font-display text-2xl tracking-[0.12em] uppercase">
+          <span className="pf-logo-text font-display text-xl sm:text-2xl tracking-[0.12em] uppercase">
             PickForge
           </span>
         </Link>
 
-        <nav className="text-sm text-slate-200 flex items-center gap-5">
+        {/* Main nav links */}
+        <nav className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs sm:text-sm text-slate-200">
           <NavLink
             to="/"
             className={({ isActive }) =>
@@ -138,22 +147,26 @@ export default function Header() {
             Leaderboard
           </NavLink>
 
+          {displayName && (
+            <NavLink
+              to="/stats"
+              className={({ isActive }) =>
+                isActive ? "text-white" : "hover:text-white"
+              }
+            >
+              Stats
+            </NavLink>
+          )}
+        </nav>
+
+        {/* Right side: profile + auth buttons */}
+        <div className="ml-auto flex flex-wrap items-center gap-2">
           {displayName ? (
             <>
-              <NavLink
-                to="/stats"
-                className={({ isActive }) =>
-                  isActive ? "text-white" : "hover:text-white"
-                }
-              >
-                Stats
-              </NavLink>
-
-              {/* Username pill → profile/username page with avatar */}
               <Link
                 to="/username"
                 state={userId && email ? { userId, email } : undefined}
-                className="flex items-center gap-2 text-xs px-2 py-1 rounded bg-slate-800 border border-slate-700 hover:bg-slate-700"
+                className="flex items-center gap-2 text-[11px] sm:text-xs px-2 py-1 rounded bg-slate-800 border border-slate-700 hover:bg-slate-700"
                 title="Profile / username"
               >
                 <div className="w-6 h-6 rounded-full bg-slate-900 flex items-center justify-center overflow-hidden text-[0.7rem] font-bold text-yellow-400">
@@ -167,16 +180,17 @@ export default function Header() {
                     displayName.replace("@", "")[0]?.toUpperCase()
                   )}
                 </div>
-                <span>{displayName}</span>
+                <span className="truncate max-w-[90px] sm:max-w-none">
+                  {displayName}
+                </span>
               </Link>
 
-              {/* Logout */}
               <button
                 onClick={async () => {
                   await supabase.auth.signOut();
                   navigate("/");
                 }}
-                className="bg-yellow-400 text-black px-3 py-1 rounded-xl"
+                className="bg-yellow-400 text-black px-3 py-1 rounded-xl text-xs sm:text-sm"
               >
                 Logout
               </button>
@@ -184,13 +198,13 @@ export default function Header() {
           ) : (
             <Link
               to="/login"
-              className="bg-yellow-400 text-black px-3 py-1 rounded-xl"
+              className="bg-yellow-400 text-black px-3 py-1 rounded-xl text-xs sm:text-sm"
               title="Sign in"
             >
               Login
             </Link>
           )}
-        </nav>
+        </div>
       </div>
     </header>
   );

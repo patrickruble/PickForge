@@ -21,6 +21,7 @@
 
   body {
     @apply bg-slate-950 text-slate-100;
+    overflow-x: hidden; /* 👈 prevent horizontal scroll */
   }
 
   h1,
