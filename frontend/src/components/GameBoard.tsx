@@ -138,7 +138,10 @@ export default function GameBoard() {
     return (
       <div className="max-w-4xl mx-auto px-4 py-6 text-sm text-slate-300">
         <h2 className="text-2xl sm:text-3xl font-semibold mb-2">
-          NFL Lines — <span className="text-yellow-400">Week {getNflWeekNumber(new Date())}</span>
+          NFL Lines —{" "}
+          <span className="text-yellow-400">
+            Week {getNflWeekNumber(new Date())}
+          </span>
         </h2>
         <p>No games are currently posted for this week.</p>
       </div>
@@ -156,7 +159,11 @@ export default function GameBoard() {
       const t = new Date(g.commenceTime);
       return t >= weekStart && t < weekEnd;
     })
-    .sort((a, b) => new Date(a.commenceTime).getTime() - new Date(b.commenceTime).getTime());
+    .sort(
+      (a, b) =>
+        new Date(a.commenceTime).getTime() -
+        new Date(b.commenceTime).getTime()
+    );
 
   // Group by section
   const grouped = new Map<string, typeof weeklyGames>();
@@ -176,7 +183,8 @@ export default function GameBoard() {
       <div className="flex items-start justify-between gap-3 mb-3 sm:mb-4">
         <div>
           <h2 className="text-2xl sm:text-3xl font-semibold tracking-tight">
-            Weekly Picks — <span className="text-yellow-400">NFL Week {week}</span>
+            Weekly Picks —{" "}
+            <span className="text-yellow-400">NFL Week {week}</span>
           </h2>
           <p className="text-xs sm:text-sm text-slate-400 mt-1">
             Tap a side to lock in your pick. Games lock at kickoff.
@@ -188,14 +196,20 @@ export default function GameBoard() {
           <div className="inline-flex items-center gap-2 px-2.5 py-1 rounded-full bg-slate-900/80 border border-slate-700/80">
             <span
               className={`h-2 w-2 rounded-full ${
-                isValidating ? "bg-yellow-400 animate-pulse" : "bg-emerald-400"
+                isValidating
+                  ? "bg-yellow-400 animate-pulse"
+                  : "bg-emerald-400"
               }`}
             />
-            <span className="text-slate-200">{isValidating ? "Refreshing lines…" : "Live odds"}</span>
+            <span className="text-slate-200">
+              {isValidating ? "Refreshing lines…" : "Live odds"}
+            </span>
           </div>
           <div className="inline-flex items-center gap-2 text-slate-300">
             <span className="text-slate-400">Picks selected:</span>
-            <span className="font-semibold text-yellow-400 font-mono text-sm">{count}</span>
+            <span className="font-semibold text-yellow-400 font-mono text-sm">
+              {count}
+            </span>
           </div>
         </div>
       </div>
@@ -219,7 +233,9 @@ export default function GameBoard() {
             onClick={clear}
             disabled={count === 0}
             className="px-3 py-1.5 rounded-full border border-slate-700 text-slate-200 hover:bg-slate-900 disabled:opacity-40 disabled:cursor-not-allowed"
-            title={count === 0 ? "No picks to clear" : "Clear all picks for this week"}
+            title={
+              count === 0 ? "No picks to clear" : "Clear all picks for this week"
+            }
           >
             Clear all picks
           </button>
@@ -233,22 +249,28 @@ export default function GameBoard() {
 
       {/* Game grid card */}
       <div className="overflow-hidden rounded-2xl shadow-lg shadow-black/30 ring-1 ring-slate-800 bg-slate-950/70">
-        <div className="grid grid-cols-12 px-3 sm:px-4 py-2 text-[10px] sm:text-xs uppercase tracking-wide text-slate-400 border-b border-slate-800">
+        {/* Desktop header row (hidden on mobile) */}
+        <div className="hidden sm:grid grid-cols-12 px-4 py-2 text-[10px] sm:text-xs uppercase tracking-wide text-slate-400 border-b border-slate-800">
           <div className="col-span-5">Away</div>
           <div className="col-span-2 text-center">Spread / Lock</div>
           <div className="col-span-5 text-right">Home</div>
         </div>
 
         {labels.length === 0 ? (
-          <div className="px-4 py-6 text-sm text-slate-400">No games this week.</div>
+          <div className="px-4 py-6 text-sm text-slate-400">
+            No games this week.
+          </div>
         ) : (
           labels.map((label) => {
             const section = grouped.get(label)!;
             return (
-              <div key={`sec-${label}`} className="border-b border-slate-900 last:border-b-0">
+              <div
+                key={`sec-${label}`}
+                className="border-b border-slate-900 last:border-b-0"
+              >
                 <div className="px-3 sm:px-4 py-1.5 bg-slate-950/95 text-[11px] font-semibold text-slate-300 border-y border-slate-900">
                   {label}
-                  </div>
+                </div>
 
                 <ul className="divide-y divide-slate-900/80">
                   {section.map((g) => {
@@ -272,73 +294,77 @@ export default function GameBoard() {
                     return (
                       <li
                         key={g.id}
-                        className="grid grid-cols-12 gap-2 px-3 sm:px-4 py-2.5 sm:py-3 hover:bg-slate-900/60 transition-colors"
+                        className="px-3 sm:px-4 py-2.5 sm:py-3 hover:bg-slate-900/60 transition-colors"
                       >
-                        {/* Away */}
-                        <div className="col-span-5 flex items-center gap-2 min-w-0">
-                          <div className="flex-1 min-w-0">
-                            <TeamBadge name={g.away} align="left" />
-                            {typeof awayML === "number" && (
-                              <div className="mt-0.5 text-[10px] text-slate-400">
-                                ML {fmtOdds(awayML)}
-                              </div>
-                            )}
+                        {/* Mobile: stacked; Desktop: 12-col grid */}
+                        <div className="flex flex-col gap-2 sm:grid sm:grid-cols-12 sm:gap-2">
+                          {/* Away */}
+                          <div className="flex items-center gap-2 min-w-0 sm:col-span-5">
+                            <div className="flex-1 min-w-0">
+                              <TeamBadge name={g.away} align="left" />
+                              {typeof awayML === "number" && (
+                                <div className="mt-0.5 text-[10px] text-slate-400">
+                                  ML {fmtOdds(awayML)}
+                                </div>
+                              )}
+                            </div>
+                            <button
+                              className={`${btnBase} ${awayCls}`}
+                              onClick={() => togglePick(g, "away")}
+                              disabled={locked || !isAuthed}
+                              title={
+                                locked
+                                  ? "Locked (game started)"
+                                  : !isAuthed
+                                  ? "Login to pick"
+                                  : "Pick away"
+                              }
+                            >
+                              {isAway ? "Picked" : "Pick"}
+                            </button>
                           </div>
-                          <button
-                            className={`${btnBase} ${awayCls}`}
-                            onClick={() => togglePick(g, "away")}
-                            disabled={locked || !isAuthed}
-                            title={
-                              locked
-                                ? "Locked (game started)"
-                                : !isAuthed
-                                ? "Login to pick"
-                                : "Pick away"
-                            }
-                          >
-                            {isAway ? "Picked" : "Pick"}
-                          </button>
-                        </div>
 
-                        {/* Spread / lock */}
-                        <div className="col-span-2 text-center flex flex-col items-center justify-center gap-1">
-                          <div className="text-[11px] sm:text-xs font-medium text-slate-200">
-                            {fmtSigned(g.spreadAway ?? null)} / {fmtSigned(g.spreadHome ?? null)}
+                          {/* Spread / lock */}
+                          <div className="flex items-center justify-between sm:flex-col sm:justify-center sm:items-center sm:col-span-2 text-center gap-1">
+                            <div className="text-[11px] sm:text-xs font-medium text-slate-200">
+                              {fmtSigned(g.spreadAway ?? null)} /{" "}
+                              {fmtSigned(g.spreadHome ?? null)}
+                            </div>
+                            <span
+                              className={
+                                locked
+                                  ? "inline-flex items-center px-1.5 py-0.5 rounded-full bg-slate-800 text-slate-400 border border-slate-700 text-[10px]"
+                                  : "inline-flex items-center px-1.5 py-0.5 rounded-full bg-sky-500/15 text-sky-300 border border-sky-700/40 text-[10px]"
+                              }
+                            >
+                              {locked ? "Locked" : `T-${countdown}`}
+                            </span>
                           </div>
-                          <span
-                            className={
-                              locked
-                                ? "inline-flex items-center px-1.5 py-0.5 rounded-full bg-slate-800 text-slate-400 border border-slate-700 text-[10px]"
-                                : "inline-flex items-center px-1.5 py-0.5 rounded-full bg-sky-500/15 text-sky-300 border border-sky-700/40 text-[10px]"
-                            }
-                          >
-                            {locked ? "Locked" : `T-${countdown}`}
-                          </span>
-                        </div>
 
-                        {/* Home */}
-                        <div className="col-span-5 flex items-center gap-2 justify-end min-w-0">
-                          <button
-                            className={`${btnBase} ${homeCls}`}
-                            onClick={() => togglePick(g, "home")}
-                            disabled={locked || !isAuthed}
-                            title={
-                              locked
-                                ? "Locked (game started)"
-                                : !isAuthed
-                                ? "Login to pick"
-                                : "Pick home"
-                            }
-                          >
-                            {isHome ? "Picked" : "Pick"}
-                          </button>
-                          <div className="flex-1 min-w-0 text-right">
-                            <TeamBadge name={g.home} align="right" />
-                            {typeof homeML === "number" && (
-                              <div className="mt-0.5 text-[10px] text-slate-400">
-                                ML {fmtOdds(homeML)}
-                              </div>
-                            )}
+                          {/* Home */}
+                          <div className="flex items-center gap-2 justify-between sm:justify-end min-w-0 sm:col-span-5">
+                            <button
+                              className={`${btnBase} ${homeCls}`}
+                              onClick={() => togglePick(g, "home")}
+                              disabled={locked || !isAuthed}
+                              title={
+                                locked
+                                  ? "Locked (game started)"
+                                  : !isAuthed
+                                  ? "Login to pick"
+                                  : "Pick home"
+                              }
+                            >
+                              {isHome ? "Picked" : "Pick"}
+                            </button>
+                            <div className="flex-1 min-w-0 text-right">
+                              <TeamBadge name={g.home} align="right" />
+                              {typeof homeML === "number" && (
+                                <div className="mt-0.5 text-[10px] text-slate-400">
+                                  ML {fmtOdds(homeML)}
+                                </div>
+                              )}
+                            </div>
                           </div>
                         </div>
                       </li>
@@ -353,8 +379,8 @@ export default function GameBoard() {
 
       {/* Tiny helper copy at bottom */}
       <p className="mt-3 text-[11px] text-slate-500">
-        Picks are saved instantly to your account. You can change sides until a game locks at
-        kickoff.
+        Picks are saved instantly to your account. You can change sides until a
+        game locks at kickoff.
       </p>
     </div>
   );
