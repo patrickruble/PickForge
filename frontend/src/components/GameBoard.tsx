@@ -1,5 +1,4 @@
 // src/components/GameBoard.tsx
-import { useState } from "react";
 import { useLines } from "../api/useLines";
 import { useRemotePicks, getNflWeekNumber } from "../hooks/useRemotePicks";
 import useNow from "../hooks/useNow";
@@ -93,18 +92,58 @@ export default function GameBoard() {
   const { games, isLoading, isValidating, error, refresh } = useLines("nfl");
 
   // Supabase picks – togglePick(game, side)
-  const { picks, count, togglePick, clear, isLocked, isAuthed } =
-    useRemotePicks();
-
-  // Simple “I’m done” feedback
-  const [submitMessage, setSubmitMessage] = useState<string | null>(null);
+  const { picks, count, togglePick, clear, isLocked, isAuthed } = useRemotePicks();
 
   // Ticker for countdowns
   const now = useNow(30_000);
 
-  if (error) return <p className="text-red-500">Failed to load lines.</p>;
-  if (isLoading) return <p className="text-gray-400">Loading…</p>;
-  if (!games.length) return <p className="text-gray-400">No games found.</p>;
+  if (error) {
+    return (
+      <div className="max-w-4xl mx-auto px-4 py-6 text-sm text-red-400">
+        Failed to load lines. Please refresh or try again in a minute.
+      </div>
+    );
+  }
+
+  if (isLoading && !games.length) {
+    return (
+      <div className="max-w-4xl mx-auto px-4 py-6 space-y-4">
+        <div className="flex items-center justify-between">
+          <div>
+            <h2 className="text-2xl sm:text-3xl font-semibold">
+              NFL Lines — <span className="text-yellow-400">Loading…</span>
+            </h2>
+            <p className="text-xs sm:text-sm text-slate-400 mt-1">
+              Weekly spread and moneyline board.
+            </p>
+          </div>
+          <div className="h-7 w-7 rounded-full border border-slate-700 flex items-center justify-center">
+            <span className="h-3 w-3 rounded-full bg-yellow-400 animate-pulse" />
+          </div>
+        </div>
+
+        <div className="space-y-2">
+          {[0, 1, 2, 3].map((i) => (
+            <div
+              key={i}
+              className="h-14 rounded-xl bg-slate-900/80 border border-slate-800 animate-pulse"
+            />
+          ))}
+        </div>
+      </div>
+    );
+  }
+
+  if (!games.length) {
+    return (
+      <div className="max-w-4xl mx-auto px-4 py-6 text-sm text-slate-300">
+        <h2 className="text-2xl sm:text-3xl font-semibold mb-2">
+          NFL Lines — <span className="text-yellow-400">Week {getNflWeekNumber(new Date())}</span>
+        </h2>
+        <p>No games are currently posted for this week.</p>
+      </div>
+    );
+  }
 
   // Current week and Tue→Tue window
   const { weekStart, weekEnd } = currentNflWeekWindow(new Date(now));
@@ -117,10 +156,7 @@ export default function GameBoard() {
       const t = new Date(g.commenceTime);
       return t >= weekStart && t < weekEnd;
     })
-    .sort(
-      (a, b) =>
-        new Date(a.commenceTime).getTime() - new Date(b.commenceTime).getTime()
-    );
+    .sort((a, b) => new Date(a.commenceTime).getTime() - new Date(b.commenceTime).getTime());
 
   // Group by section
   const grouped = new Map<string, typeof weeklyGames>();
@@ -134,119 +170,87 @@ export default function GameBoard() {
     ...Array.from(grouped.keys()).filter((k) => !SECTION_ORDER.includes(k)),
   ];
 
-  const handleSubmitWeek = () => {
-    if (!isAuthed) {
-      setSubmitMessage("Create an account or log in to lock in your picks.");
-      return;
-    }
-    if (count === 0) {
-      setSubmitMessage("You haven’t made any picks yet this week.");
-      return;
-    }
-
-    setSubmitMessage(
-      `You're all set for Week ${week}. You can still adjust picks until kickoff.`
-    );
-
-    // Auto-hide after a few seconds
-    window.setTimeout(() => {
-      setSubmitMessage(null);
-    }, 6000);
-  };
-
   return (
-    <div className="max-w-4xl mx-auto p-4 text-gray-100">
+    <div className="max-w-4xl mx-auto px-3 sm:px-4 py-5 sm:py-6 text-slate-100">
       {/* Header */}
-      <div className="flex items-center justify-between mb-1 gap-3">
-        <h2 className="text-2xl font-semibold">
-          NFL Lines — <span className="text-yellow-400">Week {week}</span>
-        </h2>
-        <div className="flex flex-wrap items-center gap-2 justify-end">
-          <button
-            onClick={refresh}
-            className="inline-flex items-center gap-2 px-3 py-1 rounded bg-yellow-400 text-black hover:bg-yellow-300 disabled:opacity-60"
-            disabled={isValidating}
-            title="Refresh odds"
-          >
-            {isValidating && (
-              <span className="inline-block h-4 w-4 animate-spin rounded-full border-2 border-black/40 border-t-black" />
-            )}
-            Refresh
-          </button>
-          <button
-            onClick={clear}
-            disabled={count === 0}
-            className="px-3 py-1 rounded border border-gray-600 text-gray-200 hover:bg-gray-800 disabled:opacity-50"
-            title={count === 0 ? "No picks to clear" : "Clear all picks"}
-          >
-            Clear
-          </button>
-          <button
-            onClick={handleSubmitWeek}
-            disabled={!isAuthed || count === 0}
-            className="px-3 py-1 rounded bg-emerald-400 text-black text-sm hover:bg-emerald-300 disabled:opacity-50 disabled:cursor-not-allowed"
-            title={
-              !isAuthed
-                ? "Log in to submit"
-                : count === 0
-                ? "Make at least one pick"
-                : "Confirm you’re done for the week"
-            }
-          >
-            I’m Done
-          </button>
+      <div className="flex items-start justify-between gap-3 mb-3 sm:mb-4">
+        <div>
+          <h2 className="text-2xl sm:text-3xl font-semibold tracking-tight">
+            Weekly Picks — <span className="text-yellow-400">NFL Week {week}</span>
+          </h2>
+          <p className="text-xs sm:text-sm text-slate-400 mt-1">
+            Tap a side to lock in your pick. Games lock at kickoff.
+          </p>
+          <p className="text-[11px] text-slate-500 mt-1">{windowLabel}</p>
+        </div>
+
+        <div className="flex flex-col items-end gap-2 text-[11px] sm:text-xs">
+          <div className="inline-flex items-center gap-2 px-2.5 py-1 rounded-full bg-slate-900/80 border border-slate-700/80">
+            <span
+              className={`h-2 w-2 rounded-full ${
+                isValidating ? "bg-yellow-400 animate-pulse" : "bg-emerald-400"
+              }`}
+            />
+            <span className="text-slate-200">{isValidating ? "Refreshing lines…" : "Live odds"}</span>
+          </div>
+          <div className="inline-flex items-center gap-2 text-slate-300">
+            <span className="text-slate-400">Picks selected:</span>
+            <span className="font-semibold text-yellow-400 font-mono text-sm">{count}</span>
+          </div>
         </div>
       </div>
 
-      <p className="mb-2 text-xs text-gray-400">{windowLabel}</p>
+      {/* Actions row */}
+      <div className="flex items-center justify-between mb-3 sm:mb-4 text-[11px] sm:text-xs">
+        <button
+          onClick={refresh}
+          className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-yellow-400 text-black hover:bg-yellow-300 disabled:opacity-60 disabled:cursor-not-allowed"
+          disabled={isValidating}
+          title="Refresh odds"
+        >
+          {isValidating && (
+            <span className="inline-block h-3 w-3 rounded-full border-2 border-black/40 border-t-black animate-spin" />
+          )}
+          Refresh lines
+        </button>
 
-      {/* Live indicator */}
-      <p className="mb-3 text-xs text-gray-400 flex items-center gap-3">
-        <span className="inline-flex items-center gap-2">
-          <span
-            className={`h-2 w-2 rounded-full ${
-              isValidating ? "bg-yellow-400" : "bg-emerald-400"
-            }`}
-          />
-          {isValidating ? "Refreshing…" : "Live"}
-        </span>
-        <span>
-          Picks selected: <span className="font-semibold">{count}</span>
-        </span>
-      </p>
-
-      {/* “I’m done” confirmation */}
-      {submitMessage && (
-        <div className="mb-3 text-[11px] sm:text-xs rounded-lg border border-emerald-500/40 bg-emerald-900/40 px-3 py-2 text-emerald-200">
-          {submitMessage}
+        <div className="flex items-center gap-2">
+          <button
+            onClick={clear}
+            disabled={count === 0}
+            className="px-3 py-1.5 rounded-full border border-slate-700 text-slate-200 hover:bg-slate-900 disabled:opacity-40 disabled:cursor-not-allowed"
+            title={count === 0 ? "No picks to clear" : "Clear all picks for this week"}
+          >
+            Clear all picks
+          </button>
+          {!isAuthed && (
+            <span className="hidden sm:inline text-[11px] text-slate-500">
+              Login to save picks to your profile.
+            </span>
+          )}
         </div>
-      )}
+      </div>
 
-      {/* Game grid */}
-      <div className="overflow-hidden rounded-lg shadow ring-1 ring-black/10 bg-gray-900">
-        <div className="grid grid-cols-12 px-4 py-2 text-xs uppercase tracking-wide text-gray-400 border-b border-gray-700">
+      {/* Game grid card */}
+      <div className="overflow-hidden rounded-2xl shadow-lg shadow-black/30 ring-1 ring-slate-800 bg-slate-950/70">
+        <div className="grid grid-cols-12 px-3 sm:px-4 py-2 text-[10px] sm:text-xs uppercase tracking-wide text-slate-400 border-b border-slate-800">
           <div className="col-span-5">Away</div>
-          <div className="col-span-2 text-center">Spread</div>
+          <div className="col-span-2 text-center">Spread / Lock</div>
           <div className="col-span-5 text-right">Home</div>
         </div>
 
         {labels.length === 0 ? (
-          <div className="px-4 py-6 text-sm text-gray-400">
-            No games this week.
-          </div>
+          <div className="px-4 py-6 text-sm text-slate-400">No games this week.</div>
         ) : (
           labels.map((label) => {
             const section = grouped.get(label)!;
             return (
-              <div
-                key={`sec-${label}`}
-                className="border-b border-gray-800 last:border-b-0"
-              >
-                <div className="px-4 py-2 bg-gray-950/40 text-xs font-semibold text-gray-300 sticky top-0">
+              <div key={`sec-${label}`} className="border-b border-slate-900 last:border-b-0">
+                <div className="px-3 sm:px-4 py-1.5 bg-slate-950/95 text-[11px] font-semibold text-slate-300 border-y border-slate-900">
                   {label}
-                </div>
+                  </div>
 
-                <ul className="divide-y divide-gray-800">
+                <ul className="divide-y divide-slate-900/80">
                   {section.map((g) => {
                     const homeML = g.moneyline?.[g.home];
                     const awayML = g.moneyline?.[g.away];
@@ -255,20 +259,31 @@ export default function GameBoard() {
                     const countdown = fmtCountdown(g.commenceTime, now);
 
                     const btnBase =
-                      "px-2 py-1 rounded border text-xs transition-colors disabled:opacity-50 disabled:cursor-not-allowed";
+                      "px-2 py-1 rounded-full text-[11px] sm:text-xs font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap";
                     const isAway = selectedSide === "away";
                     const isHome = selectedSide === "home";
                     const awayCls = isAway
-                      ? "bg-emerald-400/90 text-black border-emerald-300"
-                      : "bg-gray-800 text-gray-200 border-gray-700 hover:bg-gray-700";
+                      ? "bg-emerald-400 text-black border border-emerald-300 shadow-[0_0_12px_rgba(52,211,153,0.5)]"
+                      : "bg-slate-800 text-slate-100 border border-slate-700 hover:bg-slate-700";
                     const homeCls = isHome
-                      ? "bg-emerald-400/90 text-black border-emerald-300"
-                      : "bg-gray-800 text-gray-200 border-gray-700 hover:bg-gray-700";
+                      ? "bg-emerald-400 text-black border border-emerald-300 shadow-[0_0_12px_rgba(52,211,153,0.5)]"
+                      : "bg-slate-800 text-slate-100 border border-slate-700 hover:bg-slate-700";
 
                     return (
-                      <li key={g.id} className="grid grid-cols-12 gap-2 px-4 py-3">
+                      <li
+                        key={g.id}
+                        className="grid grid-cols-12 gap-2 px-3 sm:px-4 py-2.5 sm:py-3 hover:bg-slate-900/60 transition-colors"
+                      >
                         {/* Away */}
-                        <div className="col-span-5 flex items-center gap-2">
+                        <div className="col-span-5 flex items-center gap-2 min-w-0">
+                          <div className="flex-1 min-w-0">
+                            <TeamBadge name={g.away} align="left" />
+                            {typeof awayML === "number" && (
+                              <div className="mt-0.5 text-[10px] text-slate-400">
+                                ML {fmtOdds(awayML)}
+                              </div>
+                            )}
+                          </div>
                           <button
                             className={`${btnBase} ${awayCls}`}
                             onClick={() => togglePick(g, "away")}
@@ -281,44 +296,28 @@ export default function GameBoard() {
                                 : "Pick away"
                             }
                           >
-                            Pick
+                            {isAway ? "Picked" : "Pick"}
                           </button>
-                          <TeamBadge name={g.away} align="left" />
-                          {typeof awayML === "number" && (
-                            <span className="ml-2 text-xs text-gray-400">
-                              ML {fmtOdds(awayML)}
-                            </span>
-                          )}
                         </div>
 
-                        {/* Spread */}
-                        <div className="col-span-2 text-center">
-                          <p className="text-sm">
-                            {fmtSigned(g.spreadAway ?? null)} /{" "}
-                            {fmtSigned(g.spreadHome ?? null)}
-                          </p>
-                          <p className="text-[11px] text-gray-500">Spread</p>
-                          <div className="mt-1">
-                            <span
-                              className={
-                                locked
-                                  ? "inline-flex items-center px-1.5 py-0.5 rounded bg-gray-800 text-gray-400 border border-gray-700 text-[10px]"
-                                  : "inline-flex items-center px-1.5 py-0.5 rounded bg-sky-500/15 text-sky-300 border border-sky-700/40 text-[10px]"
-                              }
-                            >
-                              {locked ? "Locked" : `T-${countdown}`}
-                            </span>
+                        {/* Spread / lock */}
+                        <div className="col-span-2 text-center flex flex-col items-center justify-center gap-1">
+                          <div className="text-[11px] sm:text-xs font-medium text-slate-200">
+                            {fmtSigned(g.spreadAway ?? null)} / {fmtSigned(g.spreadHome ?? null)}
                           </div>
+                          <span
+                            className={
+                              locked
+                                ? "inline-flex items-center px-1.5 py-0.5 rounded-full bg-slate-800 text-slate-400 border border-slate-700 text-[10px]"
+                                : "inline-flex items-center px-1.5 py-0.5 rounded-full bg-sky-500/15 text-sky-300 border border-sky-700/40 text-[10px]"
+                            }
+                          >
+                            {locked ? "Locked" : `T-${countdown}`}
+                          </span>
                         </div>
 
                         {/* Home */}
-                        <div className="col-span-5 flex items-center justify-end gap-2 text-right">
-                          {typeof homeML === "number" && (
-                            <span className="text-xs text-gray-400">
-                              ML {fmtOdds(homeML)}
-                            </span>
-                          )}
-                          <TeamBadge name={g.home} align="right" />
+                        <div className="col-span-5 flex items-center gap-2 justify-end min-w-0">
                           <button
                             className={`${btnBase} ${homeCls}`}
                             onClick={() => togglePick(g, "home")}
@@ -331,8 +330,16 @@ export default function GameBoard() {
                                 : "Pick home"
                             }
                           >
-                            Pick
+                            {isHome ? "Picked" : "Pick"}
                           </button>
+                          <div className="flex-1 min-w-0 text-right">
+                            <TeamBadge name={g.home} align="right" />
+                            {typeof homeML === "number" && (
+                              <div className="mt-0.5 text-[10px] text-slate-400">
+                                ML {fmtOdds(homeML)}
+                              </div>
+                            )}
+                          </div>
                         </div>
                       </li>
                     );
@@ -343,6 +350,12 @@ export default function GameBoard() {
           })
         )}
       </div>
+
+      {/* Tiny helper copy at bottom */}
+      <p className="mt-3 text-[11px] text-slate-500">
+        Picks are saved instantly to your account. You can change sides until a game locks at
+        kickoff.
+      </p>
     </div>
   );
 }
