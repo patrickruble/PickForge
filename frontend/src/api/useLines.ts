@@ -12,10 +12,20 @@ interface LinesResponse {
   };
 }
 
-// Use env var if set (strip trailing slash), otherwise localhost
-const API_BASE =
-  (import.meta as any).env?.VITE_API_URL?.replace(/\/$/, "") ||
-  "http://localhost:8787";
+/**
+ * Decide which backend base URL to hit.
+ *
+ * Priority:
+ * 1. VITE_LINES_URL  (explicit backend URL for lines)
+ * 2. VITE_API_URL    (general API URL – what you have in .env.local)
+ * 3. Fallback: Render backend https://pickforge.onrender.com
+ */
+const rawBase =
+  (import.meta as any).env?.VITE_LINES_URL ??
+  (import.meta as any).env?.VITE_API_URL ??
+  "https://pickforge.onrender.com";
+
+const API_BASE: string = rawBase.replace(/\/$/, ""); // strip trailing slash just in case
 
 async function fetcher<T>(url: string): Promise<T> {
   const res = await fetch(url, { headers: { Accept: "application/json" } });
@@ -57,7 +67,6 @@ export function useLines(league: "nfl" | "ncaaf" = "nfl") {
   return {
     games: data?.games ?? [],
     league: data?.league ?? league,
-    // expose backend meta (rate-limit headers + timestamp)
     meta: data?.meta,
     error,
     isLoading: !!isLoading,

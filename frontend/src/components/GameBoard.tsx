@@ -1,4 +1,5 @@
 // src/components/GameBoard.tsx
+import { useState } from "react";
 import { useLines } from "../api/useLines";
 import { useRemotePicks, getNflWeekNumber } from "../hooks/useRemotePicks";
 import useNow from "../hooks/useNow";
@@ -92,7 +93,12 @@ export default function GameBoard() {
   const { games, isLoading, isValidating, error, refresh } = useLines("nfl");
 
   // Supabase picks – togglePick(game, side)
-  const { picks, count, togglePick, clear, isLocked, isAuthed } = useRemotePicks();
+  const { picks, count, togglePick, clear, isLocked, isAuthed } =
+    useRemotePicks();
+
+  // Simple “I’m done” feedback
+  const [submitMessage, setSubmitMessage] = useState<string | null>(null);
+
   // Ticker for countdowns
   const now = useNow(30_000);
 
@@ -128,18 +134,37 @@ export default function GameBoard() {
     ...Array.from(grouped.keys()).filter((k) => !SECTION_ORDER.includes(k)),
   ];
 
+  const handleSubmitWeek = () => {
+    if (!isAuthed) {
+      setSubmitMessage("Create an account or log in to lock in your picks.");
+      return;
+    }
+    if (count === 0) {
+      setSubmitMessage("You haven’t made any picks yet this week.");
+      return;
+    }
+
+    setSubmitMessage(
+      `You're all set for Week ${week}. You can still adjust picks until kickoff.`
+    );
+
+    // Auto-hide after a few seconds
+    window.setTimeout(() => {
+      setSubmitMessage(null);
+    }, 6000);
+  };
+
   return (
-    <div className="max-w-4xl mx-auto px-3 py-5 sm:px-4 sm:py-6 text-gray-100">
+    <div className="max-w-4xl mx-auto p-4 text-gray-100">
       {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-2">
-        <h2 className="text-2xl sm:text-3xl font-semibold leading-tight">
-          NFL Lines —{" "}
-          <span className="text-yellow-400">Week {week}</span>
+      <div className="flex items-center justify-between mb-1 gap-3">
+        <h2 className="text-2xl font-semibold">
+          NFL Lines — <span className="text-yellow-400">Week {week}</span>
         </h2>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2 justify-end">
           <button
             onClick={refresh}
-            className="inline-flex items-center gap-2 px-3 py-1 rounded bg-yellow-400 text-black hover:bg-yellow-300 disabled:opacity-60 text-sm"
+            className="inline-flex items-center gap-2 px-3 py-1 rounded bg-yellow-400 text-black hover:bg-yellow-300 disabled:opacity-60"
             disabled={isValidating}
             title="Refresh odds"
           >
@@ -151,18 +176,32 @@ export default function GameBoard() {
           <button
             onClick={clear}
             disabled={count === 0}
-            className="px-3 py-1 rounded border border-gray-600 text-gray-200 hover:bg-gray-800 disabled:opacity-50 text-sm"
+            className="px-3 py-1 rounded border border-gray-600 text-gray-200 hover:bg-gray-800 disabled:opacity-50"
             title={count === 0 ? "No picks to clear" : "Clear all picks"}
           >
             Clear
           </button>
+          <button
+            onClick={handleSubmitWeek}
+            disabled={!isAuthed || count === 0}
+            className="px-3 py-1 rounded bg-emerald-400 text-black text-sm hover:bg-emerald-300 disabled:opacity-50 disabled:cursor-not-allowed"
+            title={
+              !isAuthed
+                ? "Log in to submit"
+                : count === 0
+                ? "Make at least one pick"
+                : "Confirm you’re done for the week"
+            }
+          >
+            I’m Done
+          </button>
         </div>
       </div>
 
-      <p className="mb-3 text-xs text-gray-400">{windowLabel}</p>
+      <p className="mb-2 text-xs text-gray-400">{windowLabel}</p>
 
       {/* Live indicator */}
-      <p className="mb-4 text-xs text-gray-400 flex items-center gap-3">
+      <p className="mb-3 text-xs text-gray-400 flex items-center gap-3">
         <span className="inline-flex items-center gap-2">
           <span
             className={`h-2 w-2 rounded-full ${
@@ -176,13 +215,19 @@ export default function GameBoard() {
         </span>
       </p>
 
+      {/* “I’m done” confirmation */}
+      {submitMessage && (
+        <div className="mb-3 text-[11px] sm:text-xs rounded-lg border border-emerald-500/40 bg-emerald-900/40 px-3 py-2 text-emerald-200">
+          {submitMessage}
+        </div>
+      )}
+
       {/* Game grid */}
       <div className="overflow-hidden rounded-lg shadow ring-1 ring-black/10 bg-gray-900">
-        {/* Column headers (desktop/tablet only) */}
-        <div className="hidden sm:grid grid-cols-[auto,1fr,auto] px-4 py-2 text-[11px] uppercase tracking-wide text-gray-400 border-b border-gray-700">
-          <div>Away</div>
-          <div className="text-center">Spread</div>
-          <div className="text-right">Home</div>
+        <div className="grid grid-cols-12 px-4 py-2 text-xs uppercase tracking-wide text-gray-400 border-b border-gray-700">
+          <div className="col-span-5">Away</div>
+          <div className="col-span-2 text-center">Spread</div>
+          <div className="col-span-5 text-right">Home</div>
         </div>
 
         {labels.length === 0 ? (
@@ -221,44 +266,39 @@ export default function GameBoard() {
                       : "bg-gray-800 text-gray-200 border-gray-700 hover:bg-gray-700";
 
                     return (
-                      <li
-                        key={g.id}
-                        className="px-4 py-3"
-                      >
-                        <div className="flex flex-col gap-2 sm:grid sm:grid-cols-[auto,1fr,auto] sm:items-center sm:gap-3">
-                          {/* Away side */}
-                          <div className="flex items-center gap-2">
-                            <button
-                              className={`${btnBase} ${awayCls}`}
-                              onClick={() => togglePick(g, "away")}
-                              disabled={locked || !isAuthed}
-                              title={
-                                locked
-                                  ? "Locked (game started)"
-                                  : !isAuthed
-                                  ? "Login to pick"
-                                  : "Pick away"
-                              }
-                            >
-                              Pick
-                            </button>
-                            <TeamBadge name={g.away} align="left" />
-                            {typeof awayML === "number" && (
-                              <span className="ml-1 text-[11px] sm:text-xs text-gray-400">
-                                ML {fmtOdds(awayML)}
-                              </span>
-                            )}
-                          </div>
+                      <li key={g.id} className="grid grid-cols-12 gap-2 px-4 py-3">
+                        {/* Away */}
+                        <div className="col-span-5 flex items-center gap-2">
+                          <button
+                            className={`${btnBase} ${awayCls}`}
+                            onClick={() => togglePick(g, "away")}
+                            disabled={locked || !isAuthed}
+                            title={
+                              locked
+                                ? "Locked (game started)"
+                                : !isAuthed
+                                ? "Login to pick"
+                                : "Pick away"
+                            }
+                          >
+                            Pick
+                          </button>
+                          <TeamBadge name={g.away} align="left" />
+                          {typeof awayML === "number" && (
+                            <span className="ml-2 text-xs text-gray-400">
+                              ML {fmtOdds(awayML)}
+                            </span>
+                          )}
+                        </div>
 
-                          {/* Spread + countdown */}
-                          <div className="flex flex-col items-center justify-center gap-1 text-[11px] sm:text-xs text-gray-400 mt-1 sm:mt-0">
-                            <p className="text-sm">
-                              {fmtSigned(g.spreadAway ?? null)} /{" "}
-                              {fmtSigned(g.spreadHome ?? null)}
-                            </p>
-                            <p className="text-[10px] uppercase tracking-wide text-gray-500">
-                              Spread
-                            </p>
+                        {/* Spread */}
+                        <div className="col-span-2 text-center">
+                          <p className="text-sm">
+                            {fmtSigned(g.spreadAway ?? null)} /{" "}
+                            {fmtSigned(g.spreadHome ?? null)}
+                          </p>
+                          <p className="text-[11px] text-gray-500">Spread</p>
+                          <div className="mt-1">
                             <span
                               className={
                                 locked
@@ -269,30 +309,30 @@ export default function GameBoard() {
                               {locked ? "Locked" : `T-${countdown}`}
                             </span>
                           </div>
+                        </div>
 
-                          {/* Home side */}
-                          <div className="flex items-center justify-end gap-2 mt-1 sm:mt-0 text-right">
-                            {typeof homeML === "number" && (
-                              <span className="text-[11px] sm:text-xs text-gray-400">
-                                ML {fmtOdds(homeML)}
-                              </span>
-                            )}
-                            <TeamBadge name={g.home} align="right" />
-                            <button
-                              className={`${btnBase} ${homeCls}`}
-                              onClick={() => togglePick(g, "home")}
-                              disabled={locked || !isAuthed}
-                              title={
-                                locked
-                                  ? "Locked (game started)"
-                                  : !isAuthed
-                                  ? "Login to pick"
-                                  : "Pick home"
-                              }
-                            >
-                              Pick
-                            </button>
-                          </div>
+                        {/* Home */}
+                        <div className="col-span-5 flex items-center justify-end gap-2 text-right">
+                          {typeof homeML === "number" && (
+                            <span className="text-xs text-gray-400">
+                              ML {fmtOdds(homeML)}
+                            </span>
+                          )}
+                          <TeamBadge name={g.home} align="right" />
+                          <button
+                            className={`${btnBase} ${homeCls}`}
+                            onClick={() => togglePick(g, "home")}
+                            disabled={locked || !isAuthed}
+                            title={
+                              locked
+                                ? "Locked (game started)"
+                                : !isAuthed
+                                ? "Login to pick"
+                                : "Pick home"
+                            }
+                          >
+                            Pick
+                          </button>
                         </div>
                       </li>
                     );
