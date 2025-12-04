@@ -84,6 +84,7 @@ export default function Leaderboard() {
     return () => {
       supabase.removeChannel(channel);
       cancelled = true;
+      supabase.removeChannel(channel);
     };
   }, [week]);
 
@@ -151,6 +152,7 @@ export default function Leaderboard() {
     };
   }, [aggregated, profilesMap]);
 
+  // Unique users with at least one pick this week
   const totalPlayers = useMemo(
     () => new Set(rows.map((r) => r.user_id)).size,
     [rows]
@@ -213,14 +215,16 @@ export default function Leaderboard() {
 
         <div className="flex flex-wrap gap-2 text-[11px] sm:text-xs text-slate-300">
           <div className="px-2.5 py-1 rounded-full bg-slate-900/80 border border-slate-700/80">
-            <span className="font-semibold text-slate-100">{totalPlayers}</span>{" "}
-            players
+            <span className="font-semibold text-slate-100">
+              {totalPlayers}
+            </span>{" "}
+            users entered
           </div>
           <div className="px-2.5 py-1 rounded-full bg-slate-900/80 border border-slate-700/80">
             <span className="font-semibold text-slate-100">
               {rows.length}
             </span>{" "}
-            total picks
+            picks logged
           </div>
         </div>
       </header>
