@@ -64,7 +64,6 @@ export default function MyPicks() {
     const cleanup = init();
     return () => {
       mounted = false;
-      // await cleanup if it was a promise
       if (cleanup && typeof (cleanup as any) === "function") (cleanup as any)();
     };
   }, []);
@@ -112,7 +111,9 @@ export default function MyPicks() {
   if (!uid || loadingPicks) {
     return (
       <div className="p-6 text-slate-300">
-        <h1 className="text-2xl font-bold text-yellow-400 mb-4">My Picks (Week {weekNum})</h1>
+        <h1 className="text-2xl font-bold text-yellow-400 mb-4">
+          My Picks (Week {weekNum})
+        </h1>
         Loading…
       </div>
     );
@@ -121,18 +122,24 @@ export default function MyPicks() {
   if (!rows.length) {
     return (
       <div className="p-6 text-slate-300">
-        <h1 className="text-2xl font-bold text-yellow-400 mb-4">My Picks (Week {weekNum})</h1>
+        <h1 className="text-2xl font-bold text-yellow-400 mb-4">
+          My Picks (Week {weekNum})
+        </h1>
         No picks yet for this week.{" "}
-        <a className="text-yellow-400 underline" href="/">Go make your picks →</a>
+        <a className="text-yellow-400 underline" href="/">
+          Go make your picks →
+        </a>
       </div>
     );
   }
 
   return (
-    <div className="p-6">
-      <h1 className="text-2xl font-bold text-yellow-400 mb-4">My Picks (Week {weekNum})</h1>
+    <div className="px-3 py-5 sm:px-4 sm:py-6 max-w-4xl mx-auto">
+      <h1 className="text-2xl font-bold text-yellow-400 mb-4">
+        My Picks (Week {weekNum})
+      </h1>
 
-      <ul className="space-y-3">
+      <ul className="space-y-3 sm:space-y-4">
         {rows.map((r) => {
           const gm = gameMap.get(r.game_id);
           const home = gm?.home ?? "HOME";
@@ -173,15 +180,21 @@ export default function MyPicks() {
           const normal = "text-slate-200";
 
           return (
-            <li key={`${r.game_id}-${r.side}`} className="rounded-xl p-3 bg-slate-800/70">
-              <div className="flex items-center justify-between gap-3">
-                <div className="flex items-center gap-3">
+            <li
+              key={`${r.game_id}-${r.side}`}
+              className="rounded-2xl bg-slate-900/80 border border-slate-800 px-3 py-3 sm:px-4 sm:py-4"
+            >
+              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 sm:gap-3">
+                {/* Teams */}
+                <div className="flex items-center gap-2 sm:gap-3">
                   <div className={pickedIsAway ? pickedPill : normal}>
                     <div className="flex items-center gap-2">
                       <TeamBadge name={away} align="left" />
                     </div>
                   </div>
-                  <span className="text-slate-400 text-sm">vs</span>
+
+                  <span className="text-slate-400 text-xs sm:text-sm">vs</span>
+
                   <div className={!pickedIsAway ? pickedPill : normal}>
                     <div className="flex items-center gap-2">
                       <TeamBadge name={home} align="right" />
@@ -189,13 +202,20 @@ export default function MyPicks() {
                   </div>
                 </div>
 
-                <div className="text-right">
-                  <div className="text-xs uppercase text-slate-400">{r.side}</div>
-                  {label && <div className="text-[11px] text-slate-400">{label}</div>}
+                {/* Side + line info */}
+                <div className="text-right text-xs sm:text-sm mt-1 sm:mt-0">
+                  <div className="uppercase text-slate-400">{r.side}</div>
+                  {label && (
+                    <div className="text-[11px] sm:text-xs text-slate-400">
+                      {label}
+                    </div>
+                  )}
                 </div>
               </div>
 
-              <div className="mt-1 text-xs text-slate-400">{when}</div>
+              <div className="mt-1 text-[11px] sm:text-xs text-slate-400">
+                {when}
+              </div>
             </li>
           );
         })}
