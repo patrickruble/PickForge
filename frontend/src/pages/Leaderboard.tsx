@@ -200,10 +200,10 @@ export default function Leaderboard() {
   // -------- Main UI --------
 
   return (
-    <section className="px-4 py-6 max-w-4xl mx-auto font-sans">
-      <header className="mb-5 flex flex-col sm:flex-row sm:items-end sm:justify-between gap-3">
+    <section className="px-3 py-5 sm:px-4 sm:py-6 max-w-4xl mx-auto font-sans">
+      <header className="mb-4 sm:mb-5 flex flex-col sm:flex-row sm:items-end sm:justify-between gap-3">
         <div>
-          <h1 className="font-display text-3xl sm:text-4xl tracking-[0.18em] uppercase text-yellow-400 leading-tight drop-shadow-[0_0_12px_rgba(250,204,21,0.35)]">
+          <h1 className="font-display text-2xl sm:text-4xl tracking-[0.18em] uppercase text-yellow-400 leading-tight drop-shadow-[0_0_12px_rgba(250,204,21,0.35)]">
             Leaderboard
           </h1>
           <p className="text-xs sm:text-sm text-slate-400 mt-1">
@@ -232,7 +232,7 @@ export default function Leaderboard() {
         <span className="text-right">Picks</span>
       </div>
 
-      <ol className="space-y-2">
+      <ol className="space-y-2 sm:space-y-3">
         {aggregated.map((item, idx) => {
           const profile = item.profile;
           const username = profile?.username ?? null;
@@ -256,15 +256,15 @@ export default function Leaderboard() {
           return (
             <li
               key={item.user_id}
-              className={`rounded-2xl bg-slate-900/80 border ${rankStyles} px-3 py-2 sm:px-4 sm:py-3 flex items-center justify-between gap-3`}
+              className={`rounded-2xl bg-slate-900/80 border ${rankStyles} px-3 py-2 sm:px-4 sm:py-3 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 sm:gap-3`}
             >
               {/* left side */}
-              <div className="flex items-center gap-3 min-w-0">
+              <div className="flex items-center gap-3 min-w-0 flex-shrink-0">
                 <div className="w-7 text-[11px] font-semibold text-slate-500 text-right">
                   #{rank}
                 </div>
 
-                <div className="w-8 h-8 rounded-full overflow-hidden bg-slate-700 flex items-center justify-center text-xs font-semibold text-slate-100 border border-slate-700">
+                <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-full overflow-hidden bg-slate-700 flex items-center justify-center text-xs font-semibold text-slate-100 border border-slate-700 flex-shrink-0">
                   {profile?.avatar_url ? (
                     <img
                       src={profile.avatar_url}
@@ -287,7 +287,7 @@ export default function Leaderboard() {
               </div>
 
               {/* right side */}
-              <div className="text-right text-xs sm:text-sm">
+              <div className="text-right text-xs sm:text-sm mt-1 sm:mt-0">
                 <span className="font-mono text-yellow-400 text-base sm:text-lg">
                   {item.picks}
                 </span>
