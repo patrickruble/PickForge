@@ -4,6 +4,38 @@
 @source "./src/**/*.{js,jsx,ts,tsx}";
 
 /* ===========================================
+   GLOBAL BASE STYLES / TYPOGRAPHY
+   =========================================== */
+
+@layer base {
+  :root {
+    color-scheme: dark;
+  }
+
+  html {
+    font-family: system-ui, ui-sans-serif, -apple-system, BlinkMacSystemFont,
+      "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+  }
+
+  body {
+    @apply bg-slate-950 text-slate-100;
+  }
+
+  h1,
+  h2,
+  h3,
+  h4 {
+    @apply font-semibold tracking-tight;
+  }
+
+  a {
+    @apply text-slate-100;
+  }
+}
+
+/* ===========================================
    PICKFORGE LOGO ANIMATION
    =========================================== */
 
@@ -52,8 +84,13 @@
 
 /* Subtle idle floating motion for the lock */
 @keyframes pf-lock-idle {
-  0%, 100% { transform: translateY(0); }
-  50% { transform: translateY(-1px); }
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-1px);
+  }
 }
 
 .pf-logo-lock {
@@ -175,11 +212,21 @@
    =========================================== */
 
 @keyframes pf-bounce {
-  0%   { transform: translateY(0) scale(1); }
-  30%  { transform: translateY(-4px) scale(1.15); }
-  55%  { transform: translateY(1px) scale(0.92); }
-  75%  { transform: translateY(-2px) scale(1.05); }
-  100% { transform: translateY(0) scale(1); }
+  0% {
+    transform: translateY(0) scale(1);
+  }
+  30% {
+    transform: translateY(-4px) scale(1.15);
+  }
+  55% {
+    transform: translateY(1px) scale(0.92);
+  }
+  75% {
+    transform: translateY(-2px) scale(1.05);
+  }
+  100% {
+    transform: translateY(0) scale(1);
+  }
 }
 
 @keyframes pf-shine {

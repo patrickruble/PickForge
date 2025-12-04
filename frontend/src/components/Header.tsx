@@ -105,7 +105,9 @@ export default function Header() {
         {/* Animated PickForge logo */}
         <Link to="/" className="pf-logo text-yellow-400">
           <span className="pf-logo-lock text-[0.6rem] font-bold">🔒</span>
-          <span className="pf-logo-text text-lg">PickForge</span>
+          <span className="pf-logo-text font-display text-2xl tracking-[0.12em] uppercase">
+            PickForge
+          </span>
         </Link>
 
         <nav className="text-sm text-slate-200 flex items-center gap-5">

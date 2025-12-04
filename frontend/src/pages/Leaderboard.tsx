@@ -39,10 +39,10 @@ export default function Leaderboard() {
   const weekWindow = useMemo(() => {
     const { weekStart, weekEnd } = currentNflWeekWindow(new Date());
     const fmt: Intl.DateTimeFormatOptions = { month: "short", day: "numeric" };
-    return `${weekStart.toLocaleDateString(undefined, fmt)} – ${weekEnd.toLocaleDateString(
+    return `${weekStart.toLocaleDateString(
       undefined,
       fmt
-    )}`;
+    )} – ${weekEnd.toLocaleDateString(undefined, fmt)}`;
   }, []);
 
   useEffect(() => {
@@ -160,9 +160,11 @@ export default function Leaderboard() {
 
   if (loading && !rows.length) {
     return (
-      <div className="px-4 py-8 max-w-4xl mx-auto">
-        <h1 className="text-2xl font-bold text-yellow-400 mb-2">Leaderboard</h1>
-        <p className="text-sm text-slate-400 mb-4">
+      <div className="px-4 py-8 max-w-4xl mx-auto font-sans">
+        <h1 className="font-display text-3xl sm:text-4xl tracking-[0.18em] uppercase text-yellow-400 mb-1 drop-shadow-[0_0_12px_rgba(250,204,21,0.35)]">
+          Leaderboard
+        </h1>
+        <p className="text-xs sm:text-sm text-slate-400 mb-4">
           NFL Week {week} · {weekWindow}
         </p>
 
@@ -180,14 +182,16 @@ export default function Leaderboard() {
 
   if (!rows.length) {
     return (
-      <div className="px-4 py-8 max-w-4xl mx-auto">
-        <h1 className="text-2xl font-bold text-yellow-400 mb-2">Leaderboard</h1>
-        <p className="text-sm text-slate-400 mb-4">
+      <div className="px-4 py-8 max-w-4xl mx-auto font-sans">
+        <h1 className="font-display text-3xl sm:text-4xl tracking-[0.18em] uppercase text-yellow-400 mb-1 drop-shadow-[0_0_12px_rgba(250,204,21,0.35)]">
+          Leaderboard
+        </h1>
+        <p className="text-xs sm:text-sm text-slate-400 mb-4">
           NFL Week {week} · {weekWindow}
         </p>
-        <p className="text-slate-300">
-          No picks have been made yet this week. Be the first to lock something in on
-          Weekly Picks.
+        <p className="text-slate-300 text-sm">
+          No picks have been made yet this week. Be the first to lock something
+          in on Weekly Picks.
         </p>
       </div>
     );
@@ -196,22 +200,24 @@ export default function Leaderboard() {
   // -------- Main UI --------
 
   return (
-    <section className="px-4 py-6 max-w-4xl mx-auto">
-      <header className="mb-4 flex flex-col sm:flex-row sm:items-end sm:justify-between gap-2">
+    <section className="px-4 py-6 max-w-4xl mx-auto font-sans">
+      <header className="mb-5 flex flex-col sm:flex-row sm:items-end sm:justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-bold text-yellow-400">Leaderboard</h1>
-          <p className="text-sm text-slate-400">
+          <h1 className="font-display text-3xl sm:text-4xl tracking-[0.18em] uppercase text-yellow-400 leading-tight drop-shadow-[0_0_12px_rgba(250,204,21,0.35)]">
+            Leaderboard
+          </h1>
+          <p className="text-xs sm:text-sm text-slate-400 mt-1">
             NFL Week {week} · {weekWindow}
           </p>
         </div>
 
-        <div className="flex gap-4 text-xs sm:text-sm text-slate-400">
-          <div>
-            <span className="font-semibold text-slate-200">{totalPlayers}</span>{" "}
+        <div className="flex flex-wrap gap-2 text-[11px] sm:text-xs text-slate-300">
+          <div className="px-2.5 py-1 rounded-full bg-slate-900/80 border border-slate-700/80">
+            <span className="font-semibold text-slate-100">{totalPlayers}</span>{" "}
             players
           </div>
-          <div>
-            <span className="font-semibold text-slate-200">
+          <div className="px-2.5 py-1 rounded-full bg-slate-900/80 border border-slate-700/80">
+            <span className="font-semibold text-slate-100">
               {rows.length}
             </span>{" "}
             total picks
@@ -220,10 +226,10 @@ export default function Leaderboard() {
       </header>
 
       {/* Desktop column headers */}
-      <div className="hidden sm:grid grid-cols-[auto,1fr,auto] text-xs text-slate-400 px-3 pb-1">
-        <span className="uppercase tracking-wide">Rank</span>
-        <span className="uppercase tracking-wide">Player</span>
-        <span className="text-right uppercase tracking-wide">Picks</span>
+      <div className="hidden sm:grid grid-cols-[auto,1fr,auto] text-[11px] uppercase tracking-wide text-slate-500 px-3 pb-1">
+        <span>Rank</span>
+        <span>Player</span>
+        <span className="text-right">Picks</span>
       </div>
 
       <ol className="space-y-2">
@@ -240,7 +246,7 @@ export default function Leaderboard() {
 
           const rankStyles =
             rank === 1
-              ? "border-yellow-400/80 shadow-yellow-400/20"
+              ? "border-yellow-400/80 shadow-[0_0_18px_rgba(250,204,21,0.25)]"
               : rank === 2
               ? "border-slate-400/70"
               : rank === 3
@@ -254,7 +260,7 @@ export default function Leaderboard() {
             >
               {/* left side */}
               <div className="flex items-center gap-3 min-w-0">
-                <div className="w-7 text-xs font-semibold text-slate-400 text-right">
+                <div className="w-7 text-[11px] font-semibold text-slate-500 text-right">
                   #{rank}
                 </div>
 
@@ -295,8 +301,8 @@ export default function Leaderboard() {
       </ol>
 
       <p className="text-[11px] text-slate-500 mt-4">
-        Currently ranked by total picks submitted for this week. Future versions can
-        track win rate and ROI once results are stored.
+        Currently ranked by total picks submitted for this week. Future versions
+        can track win rate and ROI once results are stored.
       </p>
     </section>
   );
