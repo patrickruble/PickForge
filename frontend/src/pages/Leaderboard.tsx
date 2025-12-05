@@ -1,41 +1,87 @@
-// src/pages/Leaderboard.tsx
 import { useEffect, useMemo, useState } from "react";
 import { supabase } from "../lib/supabase";
-import { getNflWeekNumber, currentNflWeekWindow } from "../hooks/useRemotePicks";
+import {
+  getNflWeekNumber,
+  currentNflWeekWindow,
+} from "../hooks/useRemotePicks";
 
 type League = "nfl" | "ncaaf";
-
-type PickRow = {
-  user_id: string;
-  game_id: string;
-  week: number;
-  league: League;
-};
 
 type ProfileInfo = {
   username: string | null;
   avatar_url: string | null;
 };
 
+type GameRow = {
+  id: string;
+  status: string | null;
+  home_score: number | null;
+  away_score: number | null;
+};
+
+type PickRow = {
+  user_id: string;
+  game_id: string;
+  week: number;
+  league: League;
+  side: "home" | "away";
+  picked_price_type: "ml" | "spread" | null;
+  picked_price: number | null;
+};
+
+type PickWithGame = PickRow & {
+  game: GameRow | null;
+};
+
 type LeaderItem = {
   user_id: string;
-  picks: number;
+  wins: number;
+  losses: number;
+  pushes: number;
+  total: number;
+  winPct: number;
   profile?: ProfileInfo;
 };
 
+type Grade = "pending" | "win" | "loss" | "push";
+
 const league: League = "nfl";
+
+function gradePick(row: PickWithGame): Grade {
+  const game = row.game;
+  if (!game || game.status !== "final") return "pending";
+
+  const home = game.home_score ?? null;
+  const away = game.away_score ?? null;
+  if (home == null || away == null) return "pending";
+
+  const pickedScore = row.side === "home" ? home : away;
+  const otherScore = row.side === "home" ? away : home;
+
+  // Moneyline or missing spread → straight-up winner
+  if (row.picked_price_type === "ml" || row.picked_price == null) {
+    if (pickedScore > otherScore) return "win";
+    if (pickedScore < otherScore) return "loss";
+    return "push";
+  }
+
+  // Against the spread: picked_price is line on picked side
+  const spread = row.picked_price;
+  const spreadDiff = pickedScore + spread - otherScore;
+  if (spreadDiff > 0) return "win";
+  if (spreadDiff < 0) return "loss";
+  return "push";
+}
 
 export default function Leaderboard() {
   const week = useMemo(() => getNflWeekNumber(new Date()), []);
-  const [rows, setRows] = useState<PickRow[]>([]);
+  const [rows, setRows] = useState<PickWithGame[]>([]);
   const [loading, setLoading] = useState(true);
 
-  // user_id -> { username, avatar_url }
   const [profilesMap, setProfilesMap] = useState<Record<string, ProfileInfo>>(
     {}
   );
 
-  // Nicely formatted week date range
   const weekWindow = useMemo(() => {
     const { weekStart, weekEnd } = currentNflWeekWindow(new Date());
     const fmt: Intl.DateTimeFormatOptions = { month: "short", day: "numeric" };
@@ -51,27 +97,54 @@ export default function Leaderboard() {
     async function load() {
       setLoading(true);
 
-      const { data, error } = await supabase
+      // picks for this week
+      const { data: pickData, error: pickError } = await supabase
         .from("picks")
-        .select("user_id, game_id, week, league")
+        .select(
+          "user_id, game_id, week, league, side, picked_price_type, picked_price"
+        )
         .eq("league", league)
         .eq("week", week);
 
-      if (cancelled) return;
-
-      if (error) {
-        console.error("[Leaderboard] load error:", error);
-        setRows([]);
-      } else {
-        setRows((data ?? []) as PickRow[]);
+      if (pickError) {
+        console.error("[Leaderboard] picks load error:", pickError);
+        if (!cancelled) {
+          setRows([]);
+          setLoading(false);
+        }
+        return;
       }
 
-      setLoading(false);
+      const picks = (pickData ?? []) as PickRow[];
+
+      // games for this week
+      const { data: gameData, error: gameError } = await supabase
+        .from("games")
+        .select("id, status, home_score, away_score, week, league")
+        .eq("league", league)
+        .eq("week", week);
+
+      if (gameError) {
+        console.error("[Leaderboard] games load error:", gameError);
+      }
+
+      const games = (gameData ?? []) as GameRow[];
+      const gameMap = new Map<string, GameRow>();
+      for (const g of games) gameMap.set(g.id, g);
+
+      const combined: PickWithGame[] = picks.map((p) => ({
+        ...p,
+        game: gameMap.get(p.game_id) ?? null,
+      }));
+
+      if (!cancelled) {
+        setRows(combined);
+        setLoading(false);
+      }
     }
 
     load();
 
-    // Realtime: refresh when any pick changes
     const channel = supabase
       .channel(`leaderboard-${league}-${week}`)
       .on(
@@ -88,27 +161,52 @@ export default function Leaderboard() {
     };
   }, [week]);
 
-  // Aggregate in-memory: total picks per user for this week
   const aggregated: LeaderItem[] = useMemo(() => {
-    const counts = new Map<string, number>();
+    const stats = new Map<string, LeaderItem>();
+
     for (const r of rows) {
-      counts.set(r.user_id, (counts.get(r.user_id) ?? 0) + 1);
+      const g = gradePick(r);
+      if (g === "pending") continue;
+
+      if (!stats.has(r.user_id)) {
+        stats.set(r.user_id, {
+          user_id: r.user_id,
+          wins: 0,
+          losses: 0,
+          pushes: 0,
+          total: 0,
+          winPct: 0,
+          profile: undefined,
+        });
+      }
+
+      const s = stats.get(r.user_id)!;
+
+      if (g === "win") s.wins += 1;
+      else if (g === "loss") s.losses += 1;
+      else if (g === "push") s.pushes += 1;
+
+      s.total = s.wins + s.losses + s.pushes;
+      s.winPct = s.total > 0 ? s.wins / s.total : 0;
     }
 
     const list: LeaderItem[] = [];
-    counts.forEach((picks, user_id) => {
+    stats.forEach((v, user_id) => {
       list.push({
-        user_id,
-        picks,
+        ...v,
         profile: profilesMap[user_id],
       });
     });
 
-    list.sort((a, b) => b.picks - a.picks);
+    list.sort((a, b) => {
+      if (b.winPct !== a.winPct) return b.winPct - a.winPct;
+      return b.wins - a.wins;
+    });
+
     return list.slice(0, 100);
   }, [rows, profilesMap]);
 
-  // Resolve usernames + avatars from profiles
+  // load profiles
   useEffect(() => {
     const unknownIds = aggregated
       .filter((i) => profilesMap[i.user_id] === undefined)
@@ -152,14 +250,12 @@ export default function Leaderboard() {
     };
   }, [aggregated, profilesMap]);
 
-  // Unique users with at least one pick this week
   const totalPlayers = useMemo(
-    () => new Set(rows.map((r) => r.user_id)).size,
-    [rows]
+    () => new Set(aggregated.map((r) => r.user_id)).size,
+    [aggregated]
   );
 
-  // -------- Loading / empty states --------
-
+  // Loading / empty states
   if (loading && !rows.length) {
     return (
       <div className="px-4 py-8 max-w-4xl mx-auto font-sans">
@@ -169,7 +265,6 @@ export default function Leaderboard() {
         <p className="text-xs sm:text-sm text-slate-400 mb-4">
           NFL Week {week} · {weekWindow}
         </p>
-
         <div className="space-y-2">
           {[0, 1, 2, 3].map((i) => (
             <div
@@ -182,7 +277,7 @@ export default function Leaderboard() {
     );
   }
 
-  if (!rows.length) {
+  if (!aggregated.length) {
     return (
       <div className="px-4 py-8 max-w-4xl mx-auto font-sans">
         <h1 className="font-display text-3xl sm:text-4xl tracking-[0.18em] uppercase text-yellow-400 mb-1 drop-shadow-[0_0_12px_rgba(250,204,21,0.35)]">
@@ -192,15 +287,14 @@ export default function Leaderboard() {
           NFL Week {week} · {weekWindow}
         </p>
         <p className="text-slate-300 text-sm">
-          No picks have been made yet this week. Be the first to lock something
-          in on Weekly Picks.
+          No games have finished yet this week, so records haven’t been graded.
+          Once finals come in, you’ll see win/loss records here.
         </p>
       </div>
     );
   }
 
-  // -------- Main UI --------
-
+  // Main UI
   return (
     <section className="px-3 py-5 sm:px-4 sm:py-6 max-w-4xl mx-auto font-sans">
       <header className="mb-4 sm:mb-5 flex flex-col sm:flex-row sm:items-end sm:justify-between gap-3">
@@ -212,28 +306,20 @@ export default function Leaderboard() {
             NFL Week {week} · {weekWindow}
           </p>
         </div>
-
         <div className="flex flex-wrap gap-2 text-[11px] sm:text-xs text-slate-300">
           <div className="px-2.5 py-1 rounded-full bg-slate-900/80 border border-slate-700/80">
             <span className="font-semibold text-slate-100">
               {totalPlayers}
             </span>{" "}
-            users entered
-          </div>
-          <div className="px-2.5 py-1 rounded-full bg-slate-900/80 border border-slate-700/80">
-            <span className="font-semibold text-slate-100">
-              {rows.length}
-            </span>{" "}
-            picks logged
+            players graded
           </div>
         </div>
       </header>
 
-      {/* Desktop column headers */}
       <div className="hidden sm:grid grid-cols-[auto,1fr,auto] text-[11px] uppercase tracking-wide text-slate-500 px-3 pb-1">
         <span>Rank</span>
         <span>Player</span>
-        <span className="text-right">Picks</span>
+        <span className="text-right">Record</span>
       </div>
 
       <ol className="space-y-2 sm:space-y-3">
@@ -257,17 +343,20 @@ export default function Leaderboard() {
               ? "border-amber-600/70"
               : "border-slate-700/60";
 
+          const recordText = `${item.wins}-${item.losses}${
+            item.pushes ? `-${item.pushes}` : ""
+          }`;
+          const winPctText = `${(item.winPct * 100).toFixed(1)}%`;
+
           return (
             <li
               key={item.user_id}
               className={`rounded-2xl bg-slate-900/80 border ${rankStyles} px-3 py-2 sm:px-4 sm:py-3 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 sm:gap-3`}
             >
-              {/* left side */}
               <div className="flex items-center gap-3 min-w-0 flex-shrink-0">
                 <div className="w-7 text-[11px] font-semibold text-slate-500 text-right">
                   #{rank}
                 </div>
-
                 <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-full overflow-hidden bg-slate-700 flex items-center justify-center text-xs font-semibold text-slate-100 border border-slate-700 flex-shrink-0">
                   {profile?.avatar_url ? (
                     <img
@@ -279,7 +368,6 @@ export default function Leaderboard() {
                     initial
                   )}
                 </div>
-
                 <div className="flex flex-col min-w-0">
                   <span className="font-semibold text-sm text-slate-100 truncate">
                     {label}
@@ -289,15 +377,13 @@ export default function Leaderboard() {
                   </span>
                 </div>
               </div>
-
-              {/* right side */}
               <div className="text-right text-xs sm:text-sm mt-1 sm:mt-0">
-                <span className="font-mono text-yellow-400 text-base sm:text-lg">
-                  {item.picks}
-                </span>
-                <span className="ml-1 text-slate-400 text-[11px] sm:text-xs">
-                  picks
-                </span>
+                <div className="font-mono text-yellow-400 text-base sm:text-lg">
+                  {recordText}
+                </div>
+                <div className="text-[11px] sm:text-xs text-slate-400">
+                  Win {winPctText}
+                </div>
               </div>
             </li>
           );
@@ -305,8 +391,9 @@ export default function Leaderboard() {
       </ol>
 
       <p className="text-[11px] text-slate-500 mt-4">
-        Currently ranked by total picks submitted for this week. Future versions
-        can track win rate and ROI once results are stored.
+        Records are graded using final scores from the games table and your
+        saved spread/ML at pick time. Later we can automate the results import
+        from an API instead of entering scores by hand.
       </p>
     </section>
   );
