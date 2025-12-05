@@ -2,36 +2,16 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { supabase } from "../lib/supabase";
-
-type League = "nfl" | "ncaaf";
-
-type GameRow = {
-  id: string;
-  week: number;
-  league: League;
-  home_team: string;
-  away_team: string;
-  status: string | null;
-  home_score: number | null;
-  away_score: number | null;
-};
-
-type PickRow = {
-  id: string;
-  user_id: string;
-  league: League;
-  week: number;
-  game_id: string;
-  side: "home" | "away";
-  picked_price_type: "ml" | "spread" | null;
-  picked_price: number | null;
-};
-
-type PickWithGame = PickRow & {
-  game: GameRow | null;
-};
-
-type Grade = "pending" | "win" | "loss" | "push";
+import {
+  League,
+  GameRow,
+  PickRow,
+  PickWithGame,
+  Grade,
+  gradePick,
+  classifyDogFav,
+  formatLine,
+} from "../lib/pickGrading";
 
 type SplitRecord = {
   wins: number;
@@ -67,62 +47,6 @@ function applyResult(rec: SplitRecord, g: Grade) {
   rec.total = rec.wins + rec.losses + rec.pushes;
 }
 
-function gradePick(row: PickWithGame): Grade {
-  const game = row.game;
-  if (!game || game.status !== "final") return "pending";
-
-  const home = game.home_score ?? null;
-  const away = game.away_score ?? null;
-  if (home == null || away == null) return "pending";
-
-  const pickedScore = row.side === "home" ? home : away;
-  const otherScore = row.side === "home" ? away : home;
-
-  // Moneyline or missing spread: straight-up winner
-  if (row.picked_price_type === "ml" || row.picked_price == null) {
-    if (pickedScore > otherScore) return "win";
-    if (pickedScore < otherScore) return "loss";
-    return "push";
-  }
-
-  // Against the spread: picked_price is line on picked side
-  const spread = row.picked_price;
-  const spreadDiff = pickedScore + spread - otherScore;
-  if (spreadDiff > 0) return "win";
-  if (spreadDiff < 0) return "loss";
-  return "push";
-}
-
-function classifyDogFav(p: PickRow): "underdog" | "favorite" | "even" | "unknown" {
-  if (p.picked_price == null || !p.picked_price_type) return "unknown";
-
-  if (p.picked_price_type === "spread") {
-    if (p.picked_price > 0) return "underdog";
-    if (p.picked_price < 0) return "favorite";
-    return "even";
-  }
-
-  if (p.picked_price_type === "ml") {
-    if (p.picked_price > 0) return "underdog";
-    if (p.picked_price < 0) return "favorite";
-  }
-
-  return "unknown";
-}
-
-function formatLine(p: PickRow): string {
-  if (!p.picked_price_type || p.picked_price == null) return "-";
-
-  if (p.picked_price_type === "spread") {
-    const val = p.picked_price;
-    return val > 0 ? `+${val}` : `${val}`;
-  }
-
-  // moneyline
-  const val = p.picked_price;
-  return val > 0 ? `+${val}` : `${val}`;
-}
-
 export default function Stats() {
   const [loading, setLoading] = useState(true);
   const [needsLogin, setNeedsLogin] = useState(false);
@@ -138,7 +62,6 @@ export default function Stats() {
       setError(null);
       setNeedsLogin(false);
 
-      // 1) Get current user
       const {
         data: { session },
         error: sessionError,
@@ -160,7 +83,6 @@ export default function Stats() {
 
       setUserId(user.id);
 
-      // 2) Fetch this user's NFL picks
       const { data: picksRaw, error: picksError } = await supabase
         .from("picks")
         .select(
@@ -186,7 +108,6 @@ export default function Stats() {
         return;
       }
 
-      // 3) Fetch the games for those picks
       const gameIds = Array.from(new Set(picks.map((p) => p.game_id)));
 
       let games: GameRow[] = [];
@@ -231,7 +152,6 @@ export default function Stats() {
     };
   }, []);
 
-  // Aggregate stats
   const aggregate: AggregateStats = useMemo(() => {
     const base: AggregateStats = {
       totalGraded: 0,
@@ -251,25 +171,21 @@ export default function Stats() {
       const g = gradePick(row);
       if (g === "pending") continue;
 
-      // overall counts
       base.totalGraded += 1;
       if (g === "win") base.wins += 1;
       else if (g === "loss") base.losses += 1;
       else if (g === "push") base.pushes += 1;
 
-      // home/away splits
       if (row.side === "home") {
         applyResult(base.home, g);
       } else if (row.side === "away") {
         applyResult(base.away, g);
       }
 
-      // underdog/favorite splits
       const df = classifyDogFav(row);
       if (df === "underdog") applyResult(base.underdog, g);
       else if (df === "favorite") applyResult(base.favorite, g);
 
-      // spread vs moneyline
       if (row.picked_price_type === "spread") {
         applyResult(base.spread, g);
       } else if (row.picked_price_type === "ml") {
@@ -295,13 +211,11 @@ export default function Stats() {
     [rows]
   );
 
-  // ---------- RENDER STATES ----------
-
   if (loading) {
     return (
       <div className="min-h-[60vh] flex items-center justify-center text-slate-300">
         <div className="bg-slate-900/70 px-6 py-4 rounded-xl border border-slate-700">
-          Loading your stats…
+          Loading your stats...
         </div>
       </div>
     );
@@ -343,12 +257,8 @@ export default function Stats() {
     );
   }
 
-  // ---------- MAIN UI ----------
-
   const overallWinRateLabel =
-    aggregate.totalGraded === 0
-      ? "—"
-      : `${aggregate.winRate.toFixed(1)}%`;
+    aggregate.totalGraded === 0 ? "—" : `${aggregate.winRate.toFixed(1)}%`;
 
   const formatSplit = (rec: SplitRecord) =>
     rec.total === 0
@@ -358,9 +268,7 @@ export default function Stats() {
   return (
     <div className="max-w-5xl mx-auto px-4 py-10 text-slate-200">
       <div className="flex items-baseline justify-between gap-3 mb-2">
-        <h1 className="text-3xl font-bold text-yellow-400">
-          Your Stats
-        </h1>
+        <h1 className="text-3xl font-bold text-yellow-400">Your Stats</h1>
         {userId && (
           <Link
             to={`/u/${userId}`}
@@ -377,18 +285,14 @@ export default function Stats() {
           <p className="text-xs uppercase tracking-wide text-slate-400">
             Graded Picks
           </p>
-          <p className="text-2xl mt-1 font-bold">
-            {aggregate.totalGraded}
-          </p>
+          <p className="text-2xl mt-1 font-bold">{aggregate.totalGraded}</p>
         </div>
 
         <div className="bg-slate-900/70 p-4 rounded-xl border border-slate-700">
           <p className="text-xs uppercase tracking-wide text-slate-400">
             Win Rate
           </p>
-          <p className="text-2xl mt-1 font-bold">
-            {overallWinRateLabel}
-          </p>
+          <p className="text-2xl mt-1 font-bold">{overallWinRateLabel}</p>
         </div>
 
         <div className="bg-slate-900/70 p-4 rounded-xl border border-slate-700">
@@ -481,7 +385,6 @@ export default function Stats() {
 
                 const isHome = p.side === "home";
                 const pickedTeam = isHome ? home : away;
-                const otherTeam = isHome ? away : home;
 
                 const dogFav = classifyDogFav(p);
                 const dogFavLabel =

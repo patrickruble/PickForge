@@ -28,10 +28,8 @@ export default function UserProfile() {
   const [profile, setProfile] = useState<ProfileInfo | null>(null);
   const [profileLoading, setProfileLoading] = useState(true);
 
-  // Pull this user's season stats from the shared map
   const stats = userId ? statsByUser[userId] : undefined;
 
-  // Load profile info (username, avatar, joined date)
   useEffect(() => {
     if (!userId) return;
     let cancelled = false;
@@ -49,10 +47,8 @@ export default function UserProfile() {
       if (error) {
         console.error("[UserProfile] profile load error:", error);
         setProfile(null);
-      } else if (data) {
-        setProfile(data as ProfileInfo);
       } else {
-        setProfile(null);
+        setProfile(data as ProfileInfo);
       }
       setProfileLoading(false);
     }
@@ -64,10 +60,8 @@ export default function UserProfile() {
   }, [userId]);
 
   const displayName =
-    profile?.username && profile.username.trim().length > 0
+    profile?.username?.trim()
       ? profile.username
-      : profile
-      ? `user_${profile.id.slice(0, 6)}`
       : userId
       ? `user_${userId.slice(0, 6)}`
       : "Player";
@@ -75,17 +69,16 @@ export default function UserProfile() {
   const initial = (displayName[0] ?? "?").toUpperCase();
 
   const createdLabel =
-    profile?.created_at != null
+    profile?.created_at
       ? new Date(profile.created_at).toLocaleDateString()
       : null;
 
-  // ---------- LOADING / ERROR STATES ----------
-
+  // Loading + error states
   if (statsLoading || profileLoading) {
     return (
       <div className="min-h-[60vh] flex items-center justify-center text-slate-300">
         <div className="bg-slate-900/70 px-6 py-4 rounded-xl border border-slate-700">
-          Loading player profile…
+          Loading player profile...
         </div>
       </div>
     );
@@ -102,7 +95,7 @@ export default function UserProfile() {
     );
   }
 
-  if (!userId || !stats) {
+  if (!stats) {
     return (
       <div className="min-h-[60vh] flex items-center justify-center text-slate-300">
         <div className="bg-slate-900/70 px-6 py-4 rounded-xl border border-slate-700 text-center">
@@ -111,7 +104,7 @@ export default function UserProfile() {
           <div className="mt-3">
             <Link
               to="/leaderboard"
-              className="inline-flex items-center gap-1 px-3 py-1.5 rounded-full bg-slate-900/80 border border-slate-700/80 text-slate-300 hover:text-slate-100 text-xs"
+              className="inline-flex px-3 py-1.5 rounded-full bg-slate-900/80 border border-slate-700/80 text-slate-300 hover:text-slate-100 text-xs"
             >
               ← Back to leaderboard
             </Link>
@@ -121,8 +114,7 @@ export default function UserProfile() {
     );
   }
 
-  // ---------- MAIN UI ----------
-
+  // Main UI
   const recordText = `${stats.wins}-${stats.losses}${
     stats.pushes ? `-${stats.pushes}` : ""
   }`;
@@ -132,7 +124,7 @@ export default function UserProfile() {
       {/* Header */}
       <div className="flex items-center justify-between mb-6 gap-3">
         <div className="flex items-center gap-3">
-          <div className="w-12 h-12 sm:w-14 sm:h-14 rounded-full overflow-hidden bg-slate-700 flex items-center justify-center text-lg font-semibold text-slate-100 border border-slate-600">
+          <div className="w-12 h-12 sm:w-14 sm:h-14 rounded-full overflow-hidden bg-slate-700 flex items-center justify-center text-lg font-semibold border border-slate-600">
             {profile?.avatar_url ? (
               <img
                 src={profile.avatar_url}
@@ -143,6 +135,7 @@ export default function UserProfile() {
               initial
             )}
           </div>
+
           <div>
             <h1 className="text-2xl sm:text-3xl font-bold text-yellow-400">
               {displayName}
@@ -157,14 +150,13 @@ export default function UserProfile() {
             )}
           </div>
         </div>
-        <div className="text-right text-[11px]">
-          <Link
-            to="/leaderboard"
-            className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-slate-900/80 border border-slate-700/80 text-slate-300 hover:text-slate-100 text-xs"
-          >
-            ← Back to leaderboard
-          </Link>
-        </div>
+
+        <Link
+          to="/leaderboard"
+          className="text-xs px-2.5 py-1 rounded-full bg-slate-900/80 border border-slate-700/80 text-slate-300 hover:text-slate-100"
+        >
+          ← Back
+        </Link>
       </div>
 
       {/* Summary cards */}
@@ -203,8 +195,7 @@ export default function UserProfile() {
       </div>
 
       <p className="text-xs text-slate-400">
-        These numbers are season-long NFL results based on all finished games,
-        using the spread or moneyline you locked in at pick time.
+        Public profile shows season summary only. Pick details remain private.
       </p>
     </div>
   );
