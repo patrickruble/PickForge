@@ -1,6 +1,5 @@
 // src/pages/Username.tsx
 import { useEffect, useState } from "react";
-import { useNavigate } from "react-router-dom";
 import { supabase } from "../lib/supabase";
 
 type ProfileRow = {
@@ -15,27 +14,27 @@ type ProfileRow = {
 export default function Username() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-  const [needsLogin, setNeedsLogin] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [success, setSuccess] = useState<string | null>(null);
+  const [avatarUploading, setAvatarUploading] = useState(false);
 
   const [userId, setUserId] = useState<string | null>(null);
 
   const [username, setUsername] = useState("");
-  const [avatarUrl, setAvatarUrl] = useState("");
+  const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
   const [bio, setBio] = useState("");
   const [favoriteTeam, setFavoriteTeam] = useState("");
   const [socialUrl, setSocialUrl] = useState("");
 
-  const navigate = useNavigate();
+  const [error, setError] = useState<string | null>(null);
+  const [successMessage, setSuccessMessage] = useState<string | null>(null);
 
+  // Load current user and profile row
   useEffect(() => {
     let mounted = true;
 
     async function load() {
       setLoading(true);
       setError(null);
-      setSuccess(null);
+      setSuccessMessage(null);
 
       const {
         data: { session },
@@ -48,9 +47,11 @@ export default function Username() {
 
       const user = session?.user ?? null;
 
+      if (!mounted) return;
+
       if (!user) {
-        if (!mounted) return;
-        setNeedsLogin(true);
+        setUserId(null);
+        setError("You must be logged in to edit your profile.");
         setLoading(false);
         return;
       }
@@ -59,7 +60,9 @@ export default function Username() {
 
       const { data, error: profileError } = await supabase
         .from("profiles")
-        .select("id, username, avatar_url, bio, favorite_team, social_url")
+        .select(
+          "id, username, avatar_url, bio, favorite_team, social_url"
+        )
         .eq("id", user.id)
         .maybeSingle();
 
@@ -67,17 +70,18 @@ export default function Username() {
 
       if (profileError) {
         console.error("[Username] profile load error:", profileError);
-        setError("Failed to load profile.");
+        setError("Failed to load your profile.");
+        setLoading(false);
+        return;
       }
 
       const row = data as ProfileRow | null;
 
       setUsername(row?.username ?? "");
-      setAvatarUrl(row?.avatar_url ?? "");
+      setAvatarUrl(row?.avatar_url ?? null);
       setBio(row?.bio ?? "");
       setFavoriteTeam(row?.favorite_team ?? "");
       setSocialUrl(row?.social_url ?? "");
-
       setLoading(false);
     }
 
@@ -94,191 +98,244 @@ export default function Username() {
 
     setSaving(true);
     setError(null);
-    setSuccess(null);
+    setSuccessMessage(null);
 
-    const trimmedUsername = username.trim() || null;
-    const trimmedAvatar = avatarUrl.trim() || null;
-    const trimmedBio = bio.trim() || null;
-    const trimmedFavoriteTeam = favoriteTeam.trim() || null;
-    const trimmedSocialUrl = socialUrl.trim() || null;
+    const payload: Partial<ProfileRow> = {
+      username: username.trim() || null,
+      bio: bio.trim() || null,
+      favorite_team: favoriteTeam.trim() || null,
+      social_url: socialUrl.trim() || null,
+    };
 
-    const { error: upsertError } = await supabase
+    const { error: updateError } = await supabase
       .from("profiles")
-      .upsert(
-        {
-          id: userId,
-          username: trimmedUsername,
-          avatar_url: trimmedAvatar,
-          bio: trimmedBio,
-          favorite_team: trimmedFavoriteTeam,
-          social_url: trimmedSocialUrl,
-        },
-        { onConflict: "id" }
-      );
+      .update(payload)
+      .eq("id", userId);
 
     setSaving(false);
 
-    if (upsertError) {
-      console.error("[Username] profile upsert error:", upsertError);
-      setError("Failed to save profile. Please try again.");
+    if (updateError) {
+      console.error("[Username] profile update error:", updateError);
+      setError("Failed to save your profile. Please try again.");
       return;
     }
 
-    setSuccess("Profile updated.");
+    setSuccessMessage("Profile saved.");
+  }
+
+  async function handleAvatarChange(
+    e: React.ChangeEvent<HTMLInputElement>
+  ) {
+    const file = e.target.files?.[0];
+    if (!file || !userId) return;
+
+    setAvatarUploading(true);
+    setError(null);
+    setSuccessMessage(null);
+
+    try {
+      const ext = file.name.split(".").pop() || "jpg";
+      const filePath = `${userId}/${Date.now()}.${ext}`;
+
+      const { error: uploadError } = await supabase.storage
+        .from("avatars")
+        .upload(filePath, file, {
+          cacheControl: "3600",
+          upsert: true,
+        });
+
+      if (uploadError) {
+        console.error("[Username] avatar upload error:", uploadError);
+        setError("Failed to upload avatar. Please try a different image.");
+        setAvatarUploading(false);
+        return;
+      }
+
+      const {
+        data: { publicUrl },
+      } = supabase.storage.from("avatars").getPublicUrl(filePath);
+
+      const { error: updateError } = await supabase
+        .from("profiles")
+        .update({ avatar_url: publicUrl })
+        .eq("id", userId);
+
+      if (updateError) {
+        console.error("[Username] avatar_url update error:", updateError);
+        setError("Avatar uploaded, but failed to save profile.");
+        setAvatarUploading(false);
+        return;
+      }
+
+      setAvatarUrl(publicUrl);
+      setSuccessMessage("Avatar updated.");
+    } finally {
+      setAvatarUploading(false);
+    }
   }
 
   if (loading) {
     return (
       <div className="min-h-[60vh] flex items-center justify-center text-slate-300">
         <div className="bg-slate-900/70 px-6 py-4 rounded-xl border border-slate-700">
-          Loading profile...
+          Loading profile editor...
         </div>
       </div>
     );
   }
 
-  if (needsLogin) {
+  if (!userId) {
     return (
       <div className="min-h-[60vh] flex items-center justify-center text-slate-300">
         <div className="bg-slate-900/70 px-6 py-4 rounded-xl border border-slate-700 text-center">
-          <p className="mb-2 font-semibold text-yellow-400">Edit profile</p>
+          <p className="mb-2 font-semibold text-yellow-400">Profile</p>
           <p>You must be logged in to edit your profile.</p>
         </div>
       </div>
     );
   }
 
-  return (
-    <div className="max-w-2xl mx-auto px-4 py-10 text-slate-200">
-      <div className="flex items-baseline justify-between gap-3 mb-4">
-        <h1 className="text-2xl sm:text-3xl font-bold text-yellow-400">
-          Edit profile
-        </h1>
-        <button
-          onClick={() => navigate(-1)}
-          className="text-xs text-slate-400 hover:text-slate-100"
-        >
-          Back
-        </button>
-      </div>
+  const displayHandle =
+    username.trim().length > 0
+      ? `@${username.trim()}`
+      : "Set your username";
 
+  const initial =
+    username.trim().length > 0
+      ? username.trim()[0]?.toUpperCase()
+      : "U";
+
+  return (
+    <div className="max-w-xl mx-auto px-4 py-10 text-slate-200">
+      <h1 className="text-2xl sm:text-3xl font-bold text-yellow-400 mb-2">
+        Edit Profile
+      </h1>
       <p className="text-xs text-slate-400 mb-6">
-        Update how you appear on the leaderboard and your public profile. Only
-        summary stats are public; your individual picks stay private.
+        Set your public username, avatar, and profile details. Other players
+        will see this on the leaderboard and profile pages.
       </p>
 
-      <form
-        onSubmit={handleSave}
-        className="space-y-6 bg-slate-900/70 border border-slate-700 rounded-xl p-5"
-      >
-        {error && (
-          <div className="text-xs text-red-300 bg-red-900/30 border border-red-500/60 rounded px-3 py-2">
-            {error}
+      {error && (
+        <div className="mb-4 text-sm text-red-300 bg-red-900/30 border border-red-500/60 px-3 py-2 rounded">
+          {error}
+        </div>
+      )}
+
+      {successMessage && (
+        <div className="mb-4 text-sm text-emerald-300 bg-emerald-900/30 border border-emerald-500/60 px-3 py-2 rounded">
+          {successMessage}
+        </div>
+      )}
+
+      <form onSubmit={handleSave} className="space-y-6">
+        {/* Avatar + handle */}
+        <div className="flex items-center gap-4">
+          <div className="w-14 h-14 rounded-full overflow-hidden bg-slate-700 flex items-center justify-center text-lg font-semibold text-slate-100 border border-slate-600">
+            {avatarUrl ? (
+              <img
+                src={avatarUrl}
+                alt="Avatar"
+                className="w-full h-full object-cover"
+              />
+            ) : (
+              initial
+            )}
           </div>
-        )}
-        {success && (
-          <div className="text-xs text-emerald-300 bg-emerald-900/30 border border-emerald-500/60 rounded px-3 py-2">
-            {success}
+          <div className="flex-1">
+            <p className="text-sm font-medium text-slate-100">
+              {displayHandle}
+            </p>
+            <label className="mt-1 inline-flex items-center text-[11px] text-slate-300 cursor-pointer">
+              <span className="px-2 py-1 rounded-full border border-slate-600 bg-slate-900/70 hover:border-yellow-400 hover:text-yellow-300 transition">
+                {avatarUploading ? "Uploading..." : "Change avatar"}
+              </span>
+              <input
+                type="file"
+                accept="image/*"
+                className="hidden"
+                onChange={handleAvatarChange}
+                disabled={avatarUploading}
+              />
+            </label>
+            <p className="text-[10px] text-slate-500 mt-1">
+              Recommended: square image, under 2 MB.
+            </p>
           </div>
-        )}
+        </div>
 
         {/* Username */}
-        <div className="space-y-1">
-          <label className="block text-xs font-semibold tracking-wide uppercase text-slate-300">
+        <div>
+          <label className="block text-xs font-semibold text-slate-300 mb-1">
             Username
           </label>
           <input
             type="text"
+            className="w-full rounded-md bg-slate-900 border border-slate-700 px-3 py-2 text-sm text-slate-100 focus:outline-none focus:border-yellow-400"
+            placeholder="Example: SundaySharp"
             value={username}
             onChange={(e) => setUsername(e.target.value)}
-            maxLength={32}
-            className="w-full rounded-md bg-slate-950/70 border border-slate-700 px-3 py-2 text-sm text-slate-100 outline-none focus:border-yellow-400"
-            placeholder="Example: SundaySharp"
+            maxLength={24}
           />
-          <p className="text-[11px] text-slate-500">
-            Shown on leaderboard and your public profile.
-          </p>
-        </div>
-
-        {/* Avatar URL (optional) */}
-        <div className="space-y-1">
-          <label className="block text-xs font-semibold tracking-wide uppercase text-slate-300">
-            Avatar URL (optional)
-          </label>
-          <input
-            type="url"
-            value={avatarUrl}
-            onChange={(e) => setAvatarUrl(e.target.value)}
-            className="w-full rounded-md bg-slate-950/70 border border-slate-700 px-3 py-2 text-sm text-slate-100 outline-none focus:border-yellow-400"
-            placeholder="https://example.com/avatar.png"
-          />
-          <p className="text-[11px] text-slate-500">
-            If provided, this image will show next to your name.
+          <p className="text-[11px] text-slate-500 mt-1">
+            This is how you will appear on the leaderboard and your public
+            profile.
           </p>
         </div>
 
         {/* Favorite team */}
-        <div className="space-y-1">
-          <label className="block text-xs font-semibold tracking-wide uppercase text-slate-300">
-            Favorite team (optional)
+        <div>
+          <label className="block text-xs font-semibold text-slate-300 mb-1">
+            Favorite team
           </label>
           <input
             type="text"
+            className="w-full rounded-md bg-slate-900 border border-slate-700 px-3 py-2 text-sm text-slate-100 focus:outline-none focus:border-yellow-400"
+            placeholder="Texans, Chiefs, Eagles..."
             value={favoriteTeam}
             onChange={(e) => setFavoriteTeam(e.target.value)}
-            maxLength={64}
-            className="w-full rounded-md bg-slate-950/70 border border-slate-700 px-3 py-2 text-sm text-slate-100 outline-none focus:border-yellow-400"
-            placeholder="Example: Houston Texans"
+            maxLength={50}
           />
         </div>
 
         {/* Bio */}
-        <div className="space-y-1">
-          <label className="block text-xs font-semibold tracking-wide uppercase text-slate-300">
-            Bio (optional)
+        <div>
+          <label className="block text-xs font-semibold text-slate-300 mb-1">
+            Bio
           </label>
           <textarea
+            className="w-full rounded-md bg-slate-900 border border-slate-700 px-3 py-2 text-sm text-slate-100 focus:outline-none focus:border-yellow-400 min-h-[80px] resize-vertical"
+            placeholder="Short note about your betting style, favorite team, or anything else."
             value={bio}
             onChange={(e) => setBio(e.target.value)}
-            rows={4}
-            maxLength={280}
-            className="w-full rounded-md bg-slate-950/70 border border-slate-700 px-3 py-2 text-sm text-slate-100 outline-none focus:border-yellow-400 resize-none"
-            placeholder="Tell people a little about your betting style or fandom."
+            maxLength={300}
           />
-          <p className="text-[11px] text-slate-500">
-            Shown on your public profile. Max 280 characters.
+          <p className="text-[11px] text-slate-500 mt-1">
+            Shown on your public profile.
           </p>
         </div>
 
-        {/* Social / external link */}
-        <div className="space-y-1">
-          <label className="block text-xs font-semibold tracking-wide uppercase text-slate-300">
-            Profile link (optional)
+        {/* Social link */}
+        <div>
+          <label className="block text-xs font-semibold text-slate-300 mb-1">
+            Social or link (optional)
           </label>
           <input
             type="url"
+            className="w-full rounded-md bg-slate-900 border border-slate-700 px-3 py-2 text-sm text-slate-100 focus:outline-none focus:border-yellow-400"
+            placeholder="https://"
             value={socialUrl}
             onChange={(e) => setSocialUrl(e.target.value)}
-            className="w-full rounded-md bg-slate-950/70 border border-slate-700 px-3 py-2 text-sm text-slate-100 outline-none focus:border-yellow-400"
-            placeholder="https://twitter.com/yourhandle"
           />
-          <p className="text-[11px] text-slate-500">
-            If set, a button will appear on your public profile.
+          <p className="text-[11px] text-slate-500 mt-1">
+            Shown as a link on your profile. Make sure it is a full URL.
           </p>
         </div>
 
-        <div className="flex items-center justify-end gap-2 pt-2">
-          <button
-            type="button"
-            onClick={() => navigate(-1)}
-            className="px-3 py-1.5 rounded-md border border-slate-600 text-xs text-slate-200 hover:bg-slate-800"
-          >
-            Cancel
-          </button>
+        <div className="pt-2">
           <button
             type="submit"
             disabled={saving}
-            className="px-4 py-1.5 rounded-md bg-yellow-400 text-xs font-semibold text-slate-900 hover:bg-yellow-300 disabled:opacity-60"
+            className="inline-flex items-center justify-center px-4 py-2 rounded-md bg-yellow-400 text-black text-sm font-semibold hover:bg-yellow-300 disabled:opacity-60 disabled:cursor-not-allowed"
           >
             {saving ? "Saving..." : "Save profile"}
           </button>
