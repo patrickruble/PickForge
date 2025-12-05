@@ -9,9 +9,6 @@ type PickRow = {
   week: number;
   game_id: string;
   side: string; // expecting "home" | "away" for now
-  // other fields exist but we don't need them here
-  // commence_at: string;
-  // locked: boolean;
 };
 
 type GameRow = {
@@ -38,6 +35,10 @@ type BasicStats = {
   pushes: number;
   winRate: number;
   weekly: WeeklyStats[];
+  currentStreakType: "W" | "L" | null;
+  currentStreakLen: number;
+  bestStreakType: "W" | "L" | null;
+  bestStreakLen: number;
 };
 
 function safePct(numerator: number, denominator: number): number {
@@ -103,6 +104,10 @@ export default function Stats() {
           pushes: 0,
           winRate: 0,
           weekly: [],
+          currentStreakType: null,
+          currentStreakLen: 0,
+          bestStreakType: null,
+          bestStreakLen: 0,
         };
         setStats(empty);
         setLoading(false);
@@ -114,7 +119,6 @@ export default function Stats() {
 
       const { data: gamesRaw, error: gamesError } = await supabase
         .from("games")
-        // include status now
         .select("id,week,home_score,away_score,status")
         .in("id", gameIds);
 
@@ -144,6 +148,9 @@ export default function Stats() {
         { wins: number; losses: number; pushes: number }
       >();
 
+      type Result = "W" | "L" | "P";
+      const chronologicalResults: { week: number; res: Result }[] = [];
+
       for (const p of picks) {
         const g = gameMap.get(p.game_id);
         if (!g) continue;
@@ -160,33 +167,56 @@ export default function Stats() {
         else if (away_score > home_score) winner = "away";
         else winner = "push";
 
-        let isWin = false;
-        let isLoss = false;
-        let isPush = false;
-
+        let res: Result;
         if (winner === "push") {
-          isPush = true;
+          res = "P";
+          pushes++;
         } else if (winner === p.side) {
-          isWin = true;
+          res = "W";
+          wins++;
         } else {
-          isLoss = true;
+          res = "L";
+          losses++;
         }
-
-        if (isWin) wins++;
-        if (isLoss) losses++;
-        if (isPush) pushes++;
 
         const wk = g.week ?? p.week;
         const entry =
           weeklyMap.get(wk) ?? { wins: 0, losses: 0, pushes: 0 };
-        if (isWin) entry.wins++;
-        if (isLoss) entry.losses++;
-        if (isPush) entry.pushes++;
+        if (res === "W") entry.wins++;
+        else if (res === "L") entry.losses++;
+        else entry.pushes++;
         weeklyMap.set(wk, entry);
+
+        chronologicalResults.push({ week: wk, res });
       }
 
       const totalPicks = wins + losses + pushes;
       const winRate = safePct(wins, wins + losses) * 100;
+
+      // 4b) Compute streaks (pushes don't break streak)
+      let currentType: "W" | "L" | null = null;
+      let currentLen = 0;
+      let bestType: "W" | "L" | null = null;
+      let bestLen = 0;
+
+      // sort by week so it's deterministic
+      chronologicalResults.sort((a, b) => a.week - b.week);
+
+      for (const { res } of chronologicalResults) {
+        if (res === "P") continue;
+
+        if (!currentType || currentType !== res) {
+          currentType = res;
+          currentLen = 1;
+        } else {
+          currentLen++;
+        }
+
+        if (currentLen > bestLen) {
+          bestLen = currentLen;
+          bestType = currentType;
+        }
+      }
 
       const weekly: WeeklyStats[] = Array.from(weeklyMap.entries())
         .sort(([a], [b]) => a - b)
@@ -203,6 +233,10 @@ export default function Stats() {
         pushes,
         winRate,
         weekly,
+        currentStreakType: currentType,
+        currentStreakLen: currentLen,
+        bestStreakType: bestType,
+        bestStreakLen: bestLen,
       };
 
       setStats(basic);
@@ -251,7 +285,6 @@ export default function Stats() {
   }
 
   if (!stats) {
-    // should basically never happen, but just in case
     return (
       <div className="min-h-[60vh] flex items-center justify-center text-slate-300">
         <div className="bg-slate-900/70 px-6 py-4 rounded-xl border border-slate-700">
@@ -261,6 +294,11 @@ export default function Stats() {
     );
   }
 
+  const formatStreak = (type: "W" | "L" | null, len: number) => {
+    if (!type || len === 0) return "—";
+    return `${type}${len}`;
+  };
+
   // ---------- MAIN UI ----------
 
   return (
@@ -268,7 +306,7 @@ export default function Stats() {
       <h1 className="text-3xl font-bold text-yellow-400 mb-6">Your Stats</h1>
 
       {/* Top summary cards */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-5 mb-10">
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-5 mb-6">
         <div className="bg-slate-900/70 p-4 rounded-xl border border-slate-700">
           <p className="text-xs uppercase tracking-wide text-slate-400">
             Total Picks
@@ -297,6 +335,26 @@ export default function Stats() {
             Losses
           </p>
           <p className="text-2xl mt-1 font-bold">{stats.losses}</p>
+        </div>
+      </div>
+
+      {/* Streak cards */}
+      <div className="grid grid-cols-2 gap-5 mb-10">
+        <div className="bg-slate-900/70 p-4 rounded-xl border border-slate-700">
+          <p className="text-xs uppercase tracking-wide text-slate-400">
+            Current Streak
+          </p>
+          <p className="text-2xl mt-1 font-bold">
+            {formatStreak(stats.currentStreakType, stats.currentStreakLen)}
+          </p>
+        </div>
+        <div className="bg-slate-900/70 p-4 rounded-xl border border-slate-700">
+          <p className="text-xs uppercase tracking-wide text-slate-400">
+            Best Streak
+          </p>
+          <p className="text-2xl mt-1 font-bold">
+            {formatStreak(stats.bestStreakType, stats.bestStreakLen)}
+          </p>
         </div>
       </div>
 
