@@ -1,6 +1,7 @@
+// src/pages/Leaderboard.tsx
 import { useEffect, useMemo, useState } from "react";
-import { supabase } from "../lib/supabase";
 import { Link } from "react-router-dom";
+import { supabase } from "../lib/supabase";
 import { useAllUserStats } from "../hooks/useAllUserStats";
 import {
   getNflWeekNumber,
@@ -41,7 +42,7 @@ type LeaderItem = {
   losses: number;
   pushes: number;
   total: number;
-  winPct: number; // stored as 0–1 (fraction) for both week + season
+  winPct: number; // 0–1 fraction
   profile?: ProfileInfo;
 };
 
@@ -84,7 +85,7 @@ export default function Leaderboard() {
     {}
   );
 
-  // 🔀 View toggle: week vs season
+  // Week vs season view
   const [viewMode, setViewMode] = useState<"week" | "season">("week");
 
   // Season-long stats for each user
@@ -105,7 +106,7 @@ export default function Leaderboard() {
     async function load() {
       setLoading(true);
 
-      // picks for this week
+      // Picks for this week
       const { data: pickData, error: pickError } = await supabase
         .from("picks")
         .select(
@@ -125,7 +126,7 @@ export default function Leaderboard() {
 
       const picks = (pickData ?? []) as PickRow[];
 
-      // games for this week
+      // Games for this week
       const { data: gameData, error: gameError } = await supabase
         .from("games")
         .select("id, status, home_score, away_score, week, league")
@@ -163,13 +164,12 @@ export default function Leaderboard() {
       .subscribe();
 
     return () => {
-      supabase.removeChannel(channel);
       cancelled = true;
       supabase.removeChannel(channel);
     };
   }, [week]);
 
-  //  WEEK AGGREGATED (your existing logic)
+  // Weekly aggregated leaderboard
   const weekAggregated: LeaderItem[] = useMemo(() => {
     const stats = new Map<string, LeaderItem>();
 
@@ -196,7 +196,7 @@ export default function Leaderboard() {
       else if (g === "push") s.pushes += 1;
 
       s.total = s.wins + s.losses + s.pushes;
-      s.winPct = s.total > 0 ? s.wins / s.total : 0; // fraction
+      s.winPct = s.total > 0 ? s.wins / s.total : 0;
     }
 
     const list: LeaderItem[] = [];
@@ -215,12 +215,11 @@ export default function Leaderboard() {
     return list.slice(0, 100);
   }, [rows, profilesMap]);
 
-  //  SEASON AGGREGATED (from useAllUserStats)
+  // Season aggregated leaderboard from useAllUserStats
   const seasonAggregated: LeaderItem[] = useMemo(() => {
     const list: LeaderItem[] = [];
 
     Object.entries(statsByUser).forEach(([user_id, s]) => {
-      // ignore users with no finished picks
       if (s.totalPicks === 0) return;
 
       list.push({
@@ -229,7 +228,7 @@ export default function Leaderboard() {
         losses: s.losses,
         pushes: s.pushes,
         total: s.totalPicks,
-        winPct: s.winRate / 100, // convert % to fraction to match week
+        winPct: s.winRate / 100, // convert percent to fraction
         profile: profilesMap[user_id],
       });
     });
@@ -242,7 +241,7 @@ export default function Leaderboard() {
     return list.slice(0, 100);
   }, [statsByUser, profilesMap]);
 
-  // For loading profiles, consider BOTH week + season users
+  // For loading profiles, consider both week and season users
   const allAggregatedForProfiles: LeaderItem[] = useMemo(() => {
     const map = new Map<string, LeaderItem>();
     for (const item of weekAggregated) map.set(item.user_id, item);
@@ -252,7 +251,7 @@ export default function Leaderboard() {
     return Array.from(map.values());
   }, [weekAggregated, seasonAggregated]);
 
-  // load profiles
+  // Load profiles for any user ids we don't know yet
   useEffect(() => {
     const unknownIds = allAggregatedForProfiles
       .filter((i) => profilesMap[i.user_id] === undefined)
@@ -276,18 +275,20 @@ export default function Leaderboard() {
       }
 
       if (data) {
-        const next: Record<string, ProfileInfo> = { ...profilesMap };
-        for (const row of data as {
-          id: string;
-          username: string | null;
-          avatar_url: string | null;
-        }[]) {
-          next[row.id] = {
-            username: row.username ?? null,
-            avatar_url: row.avatar_url ?? null,
-          };
-        }
-        setProfilesMap(next);
+        setProfilesMap((prev) => {
+          const next: Record<string, ProfileInfo> = { ...prev };
+          for (const row of data as {
+            id: string;
+            username: string | null;
+            avatar_url: string | null;
+          }[]) {
+            next[row.id] = {
+              username: row.username ?? null,
+              avatar_url: row.avatar_url ?? null,
+            };
+          }
+          return next;
+        });
       }
     })();
 
@@ -341,10 +342,10 @@ export default function Leaderboard() {
         </p>
         <p className="text-slate-300 text-sm">
           {isWeekView
-            ? "No games have finished yet this week, so records haven’t been graded."
+            ? "No games have finished yet this week, so records have not been graded."
             : statsLoading
             ? "Loading season stats…"
-            : "No finished games yet this season, so season records aren’t available."}
+            : "No finished games yet this season, so season records are not available."}
         </p>
       </div>
     );
@@ -372,7 +373,7 @@ export default function Leaderboard() {
             players
           </div>
 
-          {/* Toggle */}
+          {/* View toggle */}
           <div className="flex items-center bg-slate-900/80 border border-slate-700/80 rounded-full p-1">
             <button
               onClick={() => setViewMode("week")}
@@ -471,7 +472,7 @@ export default function Leaderboard() {
               key={item.user_id}
               className={`rounded-2xl bg-slate-900/80 border ${rankStyles} px-3 py-2 sm:px-4 sm:py-3 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 sm:gap-3`}
             >
-              {/*  CLICKABLE PLAYER AREA */}
+              {/* Clickable player area */}
               <Link
                 to={`/u/${item.user_id}`}
                 className="flex items-center gap-3 min-w-0 flex-shrink-0 hover:opacity-90 transition"
@@ -527,8 +528,8 @@ export default function Leaderboard() {
 
       <p className="text-[11px] text-slate-500 mt-4">
         Week view grades records from this NFL week only. Season view combines
-        all finished games across the year using your saved spread/ML at pick
-        time.
+        all finished games across the year using your saved spread or moneyline
+        at pick time.
       </p>
     </section>
   );
