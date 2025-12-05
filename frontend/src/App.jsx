@@ -9,6 +9,7 @@ import Stats from "./pages/Stats";
 import Login from "./pages/Login";
 import Username from "./pages/Username";
 import AuthCallback from "./pages/AuthCallback";
+import UserProfile from "./pages/UserProfile"; // ✅ NEW
 
 export default function App() {
   return (
@@ -25,6 +26,7 @@ export default function App() {
             <Route path="/login" element={<Login />} />
             <Route path="/username" element={<Username />} />
             <Route path="/auth/callback" element={<AuthCallback />} />
+            <Route path="/u/:userId" element={<UserProfile />} /> {/* NEW */}
           </Routes>
         </main>
 

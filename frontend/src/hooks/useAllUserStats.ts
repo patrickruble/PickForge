@@ -2,22 +2,26 @@
 import { useEffect, useState } from "react";
 import { supabase } from "../lib/supabase";
 
+type League = "nfl" | "ncaaf";
+
 type PickRow = {
-  id: string;
   user_id: string;
-  league: string;
-  week: number;
   game_id: string;
-  side: string; // "home" | "away"
+  league: League;
+  week: number;
+  side: "home" | "away";
+  picked_price_type: "ml" | "spread" | null;
+  picked_price: number | null;
 };
 
 type GameRow = {
   id: string;
-  week: number;
+  status: string | null;
   home_score: number | null;
   away_score: number | null;
-  status: string;
 };
+
+type Grade = "pending" | "win" | "loss" | "push";
 
 export type UserSeasonStats = {
   userId: string;
@@ -30,148 +34,164 @@ export type UserSeasonStats = {
   currentStreakLen: number;
 };
 
-type StatsByUserId = Record<string, UserSeasonStats>;
+type StatsByUser = Record<string, UserSeasonStats>;
 
-function safePct(n: number, d: number): number {
-  if (!d) return 0;
-  return n / d;
+function safePct(numerator: number, denominator: number): number {
+  if (!denominator) return 0;
+  return numerator / denominator;
 }
 
-export function useAllUserStats() {
-  const [statsByUser, setStatsByUser] = useState<StatsByUserId>({});
+function gradePick(row: PickRow, game: GameRow | undefined | null): Grade {
+  if (!game || game.status !== "final") return "pending";
+
+  const home = game.home_score;
+  const away = game.away_score;
+  if (home == null || away == null) return "pending";
+
+  const pickedScore = row.side === "home" ? home : away;
+  const otherScore = row.side === "home" ? away : home;
+
+  // Moneyline or missing spread → straight up
+  if (row.picked_price_type === "ml" || row.picked_price == null) {
+    if (pickedScore > otherScore) return "win";
+    if (pickedScore < otherScore) return "loss";
+    return "push";
+  }
+
+  // Against the spread
+  const spread = row.picked_price;
+  const spreadDiff = pickedScore + spread - otherScore;
+  if (spreadDiff > 0) return "win";
+  if (spreadDiff < 0) return "loss";
+  return "push";
+}
+
+export function useAllUserStats(): {
+  statsByUser: StatsByUser;
+  loading: boolean;
+  error: string | null;
+} {
+  const [statsByUser, setStatsByUser] = useState<StatsByUser>({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    let mounted = true;
+    let cancelled = false;
 
     async function load() {
       setLoading(true);
       setError(null);
 
       try {
-        // 1) Fetch ALL picks
+        // 1) Fetch all NFL picks
         const { data: picksRaw, error: picksError } = await supabase
           .from("picks")
-          .select("id,user_id,league,week,game_id,side");
+          .select(
+            "user_id, game_id, league, week, side, picked_price_type, picked_price"
+          )
+          .eq("league", "nfl");
 
         if (picksError) throw picksError;
 
         const picks = (picksRaw ?? []) as PickRow[];
 
-        if (picks.length === 0) {
-          if (!mounted) return;
-          setStatsByUser({});
-          setLoading(false);
+        if (!picks.length) {
+          if (!cancelled) {
+            setStatsByUser({});
+            setLoading(false);
+          }
           return;
         }
 
-        // 2) Fetch ALL games used by those picks
+        // 2) Fetch games used in those picks
         const gameIds = Array.from(new Set(picks.map((p) => p.game_id)));
 
         const { data: gamesRaw, error: gamesError } = await supabase
           .from("games")
-          .select("id,week,home_score,away_score,status")
+          .select("id, status, home_score, away_score")
           .in("id", gameIds);
 
         if (gamesError) throw gamesError;
 
         const games = (gamesRaw ?? []) as GameRow[];
-
         const gameMap = new Map<string, GameRow>();
-        for (const g of games) {
-          gameMap.set(g.id, g);
-        }
+        for (const g of games) gameMap.set(g.id, g);
 
-        // 3) Group picks by user
-        const picksByUser = new Map<string, PickRow[]>();
+        // 3) Aggregate by user
+        const perUserResults = new Map<string, ("W" | "L" | "P")[]>();
+        const byUser: StatsByUser = {};
+
         for (const p of picks) {
-          const arr = picksByUser.get(p.user_id) ?? [];
-          arr.push(p);
-          picksByUser.set(p.user_id, arr);
-        }
+          const game = gameMap.get(p.game_id);
+          const grade = gradePick(p, game);
+          if (grade === "pending") continue;
 
-        const result: StatsByUserId = {};
-
-        // 4) Compute stats per user
-        for (const [userId, userPicks] of picksByUser.entries()) {
-          let wins = 0;
-          let losses = 0;
-          let pushes = 0;
-
-          type Result = "W" | "L" | "P";
-          const chronologicalResults: { week: number; res: Result }[] = [];
-
-          for (const p of userPicks) {
-            const g = gameMap.get(p.game_id);
-            if (!g) continue;
-
-            const { home_score, away_score, status } = g;
-
-            // only count finished games with scores
-            if (status !== "final" || home_score === null || away_score === null) {
-              continue;
-            }
-
-            let winner: "home" | "away" | "push";
-            if (home_score > away_score) winner = "home";
-            else if (away_score > home_score) winner = "away";
-            else winner = "push";
-
-            let res: Result;
-            if (winner === "push") {
-              res = "P";
-              pushes++;
-            } else if (winner === p.side) {
-              res = "W";
-              wins++;
-            } else {
-              res = "L";
-              losses++;
-            }
-
-            const wk = g.week ?? p.week;
-            chronologicalResults.push({ week: wk, res });
+          if (!byUser[p.user_id]) {
+            byUser[p.user_id] = {
+              userId: p.user_id,
+              totalPicks: 0,
+              wins: 0,
+              losses: 0,
+              pushes: 0,
+              winRate: 0,
+              currentStreakType: null,
+              currentStreakLen: 0,
+            };
           }
 
-          const totalPicks = wins + losses + pushes;
-          const winRate = safePct(wins, wins + losses) * 100;
+          const s = byUser[p.user_id];
 
-          // streaks (pushes don't break streak)
-          let currentType: "W" | "L" | null = null;
-          let currentLen = 0;
+          if (grade === "win") {
+            s.wins++;
+            perUserResults.set(p.user_id, [
+              ...(perUserResults.get(p.user_id) ?? []),
+              "W",
+            ]);
+          } else if (grade === "loss") {
+            s.losses++;
+            perUserResults.set(p.user_id, [
+              ...(perUserResults.get(p.user_id) ?? []),
+              "L",
+            ]);
+          } else if (grade === "push") {
+            s.pushes++;
+            perUserResults.set(p.user_id, [
+              ...(perUserResults.get(p.user_id) ?? []),
+              "P",
+            ]);
+          }
 
-          // sort by week so streak is chronological
-          chronologicalResults.sort((a, b) => a.week - b.week);
+          s.totalPicks = s.wins + s.losses + s.pushes;
+          s.winRate = safePct(s.wins, s.wins + s.losses) * 100;
+        }
 
-          for (const { res } of chronologicalResults) {
-            if (res === "P") continue;
-            if (!currentType || currentType !== res) {
-              currentType = res;
-              currentLen = 1;
+        // 4) Compute current streak per user (pushes don't break it)
+        for (const [userId, resArr] of perUserResults.entries()) {
+          let type: "W" | "L" | null = null;
+          let len = 0;
+
+          for (const r of resArr) {
+            if (r === "P") continue;
+            if (!type || type !== r) {
+              type = r;
+              len = 1;
             } else {
-              currentLen++;
+              len++;
             }
           }
 
-          result[userId] = {
-            userId,
-            totalPicks,
-            wins,
-            losses,
-            pushes,
-            winRate,
-            currentStreakType: currentType,
-            currentStreakLen: currentLen,
-          };
+          if (byUser[userId]) {
+            byUser[userId].currentStreakType = type;
+            byUser[userId].currentStreakLen = len;
+          }
         }
 
-        if (!mounted) return;
-        setStatsByUser(result);
+        if (cancelled) return;
+        setStatsByUser(byUser);
         setLoading(false);
       } catch (e: any) {
         console.error("[useAllUserStats] error:", e);
-        if (!mounted) return;
+        if (cancelled) return;
         setError(e.message ?? "Failed to load stats");
         setLoading(false);
       }
@@ -180,7 +200,7 @@ export function useAllUserStats() {
     load();
 
     return () => {
-      mounted = false;
+      cancelled = true;
     };
   }, []);
 

@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { supabase } from "../lib/supabase";
+import { Link } from "react-router-dom";
 import { useAllUserStats } from "../hooks/useAllUserStats";
 import {
   getNflWeekNumber,
@@ -168,7 +169,7 @@ export default function Leaderboard() {
     };
   }, [week]);
 
-  // 🟡 WEEK AGGREGATED (your existing logic)
+  //  WEEK AGGREGATED (your existing logic)
   const weekAggregated: LeaderItem[] = useMemo(() => {
     const stats = new Map<string, LeaderItem>();
 
@@ -214,7 +215,7 @@ export default function Leaderboard() {
     return list.slice(0, 100);
   }, [rows, profilesMap]);
 
-  // 🟢 SEASON AGGREGATED (from useAllUserStats)
+  //  SEASON AGGREGATED (from useAllUserStats)
   const seasonAggregated: LeaderItem[] = useMemo(() => {
     const list: LeaderItem[] = [];
 
@@ -295,7 +296,8 @@ export default function Leaderboard() {
     };
   }, [allAggregatedForProfiles, profilesMap]);
 
-  const activeAggregated = viewMode === "week" ? weekAggregated : seasonAggregated;
+  const activeAggregated =
+    viewMode === "week" ? weekAggregated : seasonAggregated;
 
   const totalPlayers = useMemo(
     () => new Set(activeAggregated.map((r) => r.user_id)).size,
@@ -426,7 +428,9 @@ export default function Leaderboard() {
               : "border-slate-700/60";
 
           // Week stats from weekAggregated (if user appears there)
-          const weekItem = weekAggregated.find((w) => w.user_id === item.user_id);
+          const weekItem = weekAggregated.find(
+            (w) => w.user_id === item.user_id
+          );
           const weekRecordText = weekItem
             ? `${weekItem.wins}-${weekItem.losses}${
                 weekItem.pushes ? `-${weekItem.pushes}` : ""
@@ -455,7 +459,9 @@ export default function Leaderboard() {
               : "—";
 
           // Primary display based on view
-          const primaryRecordText = isWeekView ? weekRecordText : seasonRecordText;
+          const primaryRecordText = isWeekView
+            ? weekRecordText
+            : seasonRecordText;
           const primaryWinPctText = isWeekView
             ? weekWinPctText
             : seasonWinPctText;
@@ -465,7 +471,11 @@ export default function Leaderboard() {
               key={item.user_id}
               className={`rounded-2xl bg-slate-900/80 border ${rankStyles} px-3 py-2 sm:px-4 sm:py-3 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 sm:gap-3`}
             >
-              <div className="flex items-center gap-3 min-w-0 flex-shrink-0">
+              {/*  CLICKABLE PLAYER AREA */}
+              <Link
+                to={`/u/${item.user_id}`}
+                className="flex items-center gap-3 min-w-0 flex-shrink-0 hover:opacity-90 transition"
+              >
                 <div className="w-7 text-[11px] font-semibold text-slate-500 text-right">
                   #{rank}
                 </div>
@@ -488,7 +498,8 @@ export default function Leaderboard() {
                     @{label.toLowerCase().replace(/\s+/g, "")}
                   </span>
                 </div>
-              </div>
+              </Link>
+
               <div className="text-right text-xs sm:text-sm mt-1 sm:mt-0">
                 <div className="font-mono text-yellow-400 text-base sm:text-lg">
                   {primaryRecordText}
