@@ -31,10 +31,11 @@ export default function UserProfile() {
   const [profile, setProfile] = useState<ProfileInfo | null>(null);
   const [profileLoading, setProfileLoading] = useState(true);
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
+  const [copied, setCopied] = useState(false);
 
   const stats = userId ? statsByUser[userId] : undefined;
 
-  // Load current logged-in user so we can know if this is "my" profile
+  // Logged-in user id so we can tell if this is "my" profile
   useEffect(() => {
     let cancelled = false;
 
@@ -102,7 +103,7 @@ export default function UserProfile() {
       ? new Date(profile.created_at).toLocaleDateString()
       : null;
 
-  // Compute season rank for this user
+  // Season rank for this user
   const { seasonRank, totalPlayers } = useMemo(() => {
     const entries = Object.entries(statsByUser).filter(
       ([, s]) => s.totalPicks > 0
@@ -153,6 +154,22 @@ export default function UserProfile() {
 
   const isOwnProfile =
     currentUserId != null && userId != null && currentUserId === userId;
+
+  const profileUrl = useMemo(() => {
+    if (typeof window === "undefined" || !userId) return "";
+    return `${window.location.origin}/u/${userId}`;
+  }, [userId]);
+
+  async function handleCopyProfile() {
+    if (!profileUrl) return;
+    try {
+      await navigator.clipboard.writeText(profileUrl);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch (err) {
+      console.error("[UserProfile] clipboard error:", err);
+    }
+  }
 
   // ---------- LOADING / ERROR STATES ----------
 
@@ -233,9 +250,7 @@ export default function UserProfile() {
             {profile?.favorite_team && (
               <p className="text-[11px] text-slate-400 mt-1">
                 Favorite team:{" "}
-                <span className="text-slate-200">
-                  {profile.favorite_team}
-                </span>
+                <span className="text-slate-200">{profile.favorite_team}</span>
               </p>
             )}
           </div>
@@ -250,6 +265,17 @@ export default function UserProfile() {
               Edit profile
             </Link>
           )}
+
+          {profileUrl && (
+            <button
+              type="button"
+              onClick={handleCopyProfile}
+              className="block w-full inline-flex items-center justify-center px-2.5 py-1 rounded-full border border-slate-600 text-[11px] text-slate-200 hover:text-yellow-300 hover:border-yellow-400"
+            >
+              {copied ? "Copied profile link" : "Copy profile link"}
+            </button>
+          )}
+
           <div>
             <Link
               to="/leaderboard"
@@ -258,6 +284,7 @@ export default function UserProfile() {
               ← Back to leaderboard
             </Link>
           </div>
+
           {profile?.social_url && (
             <div>
               <a
@@ -266,7 +293,7 @@ export default function UserProfile() {
                 rel="noreferrer"
                 className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full border border-slate-600 text-[11px] text-slate-200 hover:text-yellow-300 hover:border-yellow-400"
               >
-                Profile link
+                External profile
               </a>
             </div>
           )}
@@ -311,9 +338,7 @@ export default function UserProfile() {
       {/* About + Rank / Badges */}
       <div className="grid gap-6 md:grid-cols-[2fr,1.5fr] mb-8">
         <div className="bg-slate-900/70 p-4 rounded-xl border border-slate-700">
-          <h2 className="text-sm font-semibold text-slate-100 mb-2">
-            About
-          </h2>
+          <h2 className="text-sm font-semibold text-slate-100 mb-2">About</h2>
           {profile?.bio && profile.bio.trim().length > 0 ? (
             <p className="text-sm text-slate-300 whitespace-pre-line">
               {profile.bio}
