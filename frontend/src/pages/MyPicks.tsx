@@ -26,18 +26,58 @@ type PickRow = {
   picked_snapshot?: PickSnapshot | null;
 };
 
+type GameResult = {
+  id: string;
+  status: string | null;
+  home_score: number | null;
+  away_score: number | null;
+};
+
+type PickWithGame = PickRow & {
+  game: GameResult | null;
+};
+
+type Grade = "pending" | "win" | "loss" | "push";
+
 const fmtSigned = (n: number | null | undefined) =>
   typeof n === "number" ? (n > 0 ? `+${n}` : `${n}`) : "—";
 
+// Same grading logic as Stats: uses final score + the line you locked in
+function gradePick(row: PickWithGame): Grade {
+  const game = row.game;
+  if (!game || game.status !== "final") return "pending";
+
+  const home = game.home_score ?? null;
+  const away = game.away_score ?? null;
+  if (home == null || away == null) return "pending";
+
+  const pickedScore = row.side === "home" ? home : away;
+  const otherScore = row.side === "home" ? away : home;
+
+  // Moneyline or no spread: straight-up winner
+  if (row.picked_price_type === "ml" || row.picked_price == null) {
+    if (pickedScore > otherScore) return "win";
+    if (pickedScore < otherScore) return "loss";
+    return "push";
+  }
+
+  // Against the spread: picked_price is the line on the picked side
+  const spread = row.picked_price;
+  const spreadDiff = pickedScore + spread - otherScore;
+  if (spreadDiff > 0) return "win";
+  if (spreadDiff < 0) return "loss";
+  return "push";
+}
+
 export default function MyPicks() {
   const [uid, setUid] = useState<string | null>(null);
-  const [rows, setRows] = useState<PickRow[]>([]);
+  const [rows, setRows] = useState<PickWithGame[]>([]);
   const [loadingPicks, setLoadingPicks] = useState(true);
 
   // Lines (we only use them for context; don't block UI on them)
   const { games, isLoading: linesLoading } = useLines("nfl");
 
-  // id -> minimal game info
+  // id -> minimal game info for names / current lines
   const gameMap = useMemo(() => {
     const m = new Map<string, any>();
     for (const g of games) {
@@ -80,7 +120,7 @@ export default function MyPicks() {
     };
   }, []);
 
-  // 2) Load picks whenever uid is known
+  // 2) Load picks + their game results whenever uid is known
   useEffect(() => {
     if (!uid) return; // will be set by ensureSession()
     let cancelled = false;
@@ -99,14 +139,48 @@ export default function MyPicks() {
           .eq("week", week)
           .order("commence_at", { ascending: true });
 
-        if (!cancelled) {
-          if (error) {
-            console.error("load picks error:", error);
-            setRows([]);
+        if (cancelled) return;
+
+        if (error) {
+          console.error("load picks error:", error);
+          setRows([]);
+          return;
+        }
+
+        const picks = (data ?? []) as PickRow[];
+        if (!picks.length) {
+          setRows([]);
+          return;
+        }
+
+        // Fetch final scores / status for these games
+        const gameIds = Array.from(new Set(picks.map((p) => p.game_id)));
+        let gameResults: GameResult[] = [];
+
+        if (gameIds.length > 0) {
+          const { data: gamesRaw, error: gamesError } = await supabase
+            .from("games")
+            .select("id, status, home_score, away_score")
+            .in("id", gameIds);
+
+          if (gamesError) {
+            console.error("games load error:", gamesError);
           } else {
-            setRows((data ?? []) as PickRow[]);
+            gameResults = (gamesRaw ?? []) as GameResult[];
           }
         }
+
+        const resultMap = new Map<string, GameResult>();
+        for (const g of gameResults) {
+          resultMap.set(g.id, g);
+        }
+
+        const combined: PickWithGame[] = picks.map((p) => ({
+          ...p,
+          game: resultMap.get(p.game_id) ?? null,
+        }));
+
+        setRows(combined);
       } finally {
         if (!cancelled) setLoadingPicks(false);
       }
@@ -250,10 +324,32 @@ export default function MyPicks() {
           const normal =
             "px-2.5 py-1 rounded-full bg-slate-800/80 text-slate-100 border border-slate-700/70";
 
+          // ---------- grade + tint ----------
+          const grade = gradePick(r);
+          const baseCard =
+  "rounded-2xl p-3 sm:p-4 shadow-sm shadow-black/30 transition-all";
+
+let tint = "bg-slate-950/80 border border-slate-800"; // default pending
+
+if (grade === "win") {
+  tint =
+    "bg-emerald-950/40 border border-emerald-500 shadow-emerald-500/30";
+}
+
+if (grade === "loss") {
+  tint =
+    "bg-rose-950/40 border border-rose-500 shadow-rose-500/30";
+}
+
+if (grade === "push") {
+  tint =
+    "bg-slate-700/40 border border-slate-400 shadow-slate-500/30";
+}
+
           return (
             <li
               key={`${r.game_id}-${r.side}`}
-              className="rounded-2xl p-3 sm:p-4 bg-slate-950/80 border border-slate-800 shadow-sm shadow-black/30"
+              className={baseCard + (grade === "pending" ? "" : tint)}
             >
               <div className="flex flex-col gap-2 sm:gap-3 sm:flex-row sm:items-center sm:justify-between">
                 {/* Left: matchup */}
@@ -283,9 +379,9 @@ export default function MyPicks() {
                 <div className="text-right min-w-[40%] sm:min-w-[32%]">
                   <div className="text-[11px] uppercase text-slate-400 mb-0.5">
                     You picked{" "}
-                      <span className="font-semibold text-slate-100">
-                        {pickedIsAway ? away : home}
-                      </span>
+                    <span className="font-semibold text-slate-100">
+                      {pickedIsAway ? away : home}
+                    </span>
                   </div>
                   {label && (
                     <div className="text-[11px] text-slate-400">{label}</div>
