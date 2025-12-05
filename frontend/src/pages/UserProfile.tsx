@@ -27,8 +27,107 @@ function formatStreak(type: "W" | "L" | null, len: number) {
 
 // ---- Follows table config (matches your SQL) ----
 const FOLLOW_TABLE = "follows";
-const FOLLOWER_COL = "follower_id";   // who is following
+const FOLLOWER_COL = "follower_id"; // who is following
 const FOLLOWING_COL = "following_id"; // who they follow
+
+// Small follow/unfollow pill component
+function FollowButton({
+  viewerId,
+  profileId,
+  onChange,
+}: {
+  viewerId: string;
+  profileId: string;
+  onChange: () => void;
+}) {
+  const [loading, setLoading] = useState(false);
+  const [isFollowing, setIsFollowing] = useState<boolean | null>(null);
+
+  // Load follow state
+  useEffect(() => {
+    let mounted = true;
+
+    async function loadFollow() {
+      const { data, error } = await supabase
+        .from(FOLLOW_TABLE)
+        .select(FOLLOWER_COL)
+        .eq(FOLLOWER_COL, viewerId)
+        .eq(FOLLOWING_COL, profileId)
+        .maybeSingle();
+
+      if (!mounted) return;
+
+      if (error) {
+        console.error("[FollowButton] load error:", error);
+        setIsFollowing(false);
+      } else {
+        setIsFollowing(!!data);
+      }
+    }
+
+    loadFollow();
+    return () => {
+      mounted = false;
+    };
+  }, [viewerId, profileId]);
+
+  async function toggleFollow() {
+    if (loading || isFollowing === null) return;
+    setLoading(true);
+
+    try {
+      if (!isFollowing) {
+        // FOLLOW
+        const { error } = await supabase.from(FOLLOW_TABLE).insert({
+          [FOLLOWER_COL]: viewerId,
+          [FOLLOWING_COL]: profileId,
+        });
+        if (error) {
+          console.error("[FollowButton] follow error:", error);
+        } else {
+          setIsFollowing(true);
+          onChange();
+        }
+      } else {
+        // UNFOLLOW
+        const { error } = await supabase
+          .from(FOLLOW_TABLE)
+          .delete()
+          .eq(FOLLOWER_COL, viewerId)
+          .eq(FOLLOWING_COL, profileId);
+
+        if (error) {
+          console.error("[FollowButton] unfollow error:", error);
+        } else {
+          setIsFollowing(false);
+          onChange();
+        }
+      }
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  const base =
+    "w-full inline-flex items-center justify-center px-2.5 py-1 rounded-full text-[11px] border transition";
+
+  return (
+    <button
+      type="button"
+      onClick={toggleFollow}
+      disabled={loading || isFollowing === null}
+      className={
+        isFollowing
+          ? base +
+            " bg-yellow-400 text-black border-yellow-500 hover:bg-yellow-300 disabled:opacity-60"
+          : base +
+            " bg-slate-900 text-slate-200 border-slate-600 hover:border-yellow-400 hover:text-yellow-300 disabled:opacity-60"
+      }
+    >
+      {loading || isFollowing === null ? "…" : isFollowing ? "Following" : "Follow"}
+    </button>
+  );
+}
 
 export default function UserProfile() {
   // slug can be username OR raw user id
@@ -49,6 +148,7 @@ export default function UserProfile() {
   const [following, setFollowing] = useState<BasicProfile[]>([]);
   const [followLoading, setFollowLoading] = useState(false);
   const [followError, setFollowError] = useState<string | null>(null);
+  const [followVersion, setFollowVersion] = useState(0); // bump to reload
 
   // Logged-in user, so we know if this is "my" profile
   useEffect(() => {
@@ -123,8 +223,7 @@ export default function UserProfile() {
       ? new Date(profile.created_at).toLocaleDateString()
       : null;
 
-  // Load followers + following for this profile (using your follower_id / following_id schema)
-    // Load followers + following for this profile (using follower_id / following_id schema)
+  // Load followers + following for this profile (using follower_id / following_id schema)
   useEffect(() => {
     const userId = profile?.id;
     if (!userId) return;
@@ -136,7 +235,7 @@ export default function UserProfile() {
       setFollowError(null);
 
       try {
-        // two simple queries: who follows me, and who I follow
+        // who follows me, and who I follow
         const [
           { data: followerRows, error: followerError },
           { data: followingRows, error: followingError },
@@ -166,16 +265,12 @@ export default function UserProfile() {
 
         const followerIds = Array.from(
           new Set(
-            (followerRows ?? []).map(
-              (r: any) => r[FOLLOWER_COL] as string
-            )
+            (followerRows ?? []).map((r: any) => r[FOLLOWER_COL] as string)
           )
         );
         const followingIds = Array.from(
           new Set(
-            (followingRows ?? []).map(
-              (r: any) => r[FOLLOWING_COL] as string
-            )
+            (followingRows ?? []).map((r: any) => r[FOLLOWING_COL] as string)
           )
         );
 
@@ -221,7 +316,7 @@ export default function UserProfile() {
     return () => {
       cancelled = true;
     };
-  }, [profile?.id]);
+  }, [profile?.id, followVersion]);
 
   // Season rank for this user (optional)
   const { seasonRank, totalPlayers } = useMemo(() => {
@@ -302,6 +397,9 @@ export default function UserProfile() {
       console.error("[UserProfile] clipboard error:", err);
     }
   }
+
+  const followerCount = followers.length;
+  const followingCount = following.length;
 
   // ---------- LOADING / ERROR STATES ----------
 
@@ -396,7 +494,17 @@ export default function UserProfile() {
                 <span className="text-slate-200">{profile.favorite_team}</span>
               </p>
             )}
-            {/* no follower/following pill here – counts only live in the list card */}
+            <p className="text-[11px] text-slate-400 mt-1">
+              <span className="font-semibold text-slate-100">
+                {followerCount}
+              </span>{" "}
+              Followers{" "}
+              <span className="mx-1 text-slate-600">•</span>
+              <span className="font-semibold text-slate-100">
+                {followingCount}
+              </span>{" "}
+              Following
+            </p>
           </div>
         </div>
 
@@ -419,6 +527,17 @@ export default function UserProfile() {
               {copied ? "Copied profile link" : "Copy profile link"}
             </button>
           )}
+
+          {/* Follow pill – only when viewing someone else */}
+          {profile &&
+            currentUserId &&
+            profile.id !== currentUserId && (
+              <FollowButton
+                viewerId={currentUserId}
+                profileId={profile.id}
+                onChange={() => setFollowVersion((v) => v + 1)}
+              />
+            )}
 
           <div>
             <Link
@@ -529,9 +648,7 @@ export default function UserProfile() {
       {/* Following list */}
       <div className="bg-slate-900/70 p-4 rounded-xl border border-slate-700 mb-4">
         <div className="flex items-center justify-between mb-2">
-          <h2 className="text-sm font-semibold text-slate-100">
-            Following
-          </h2>
+          <h2 className="text-sm font-semibold text-slate-100">Following</h2>
           {followLoading && (
             <span className="text-[11px] text-slate-500">Loading…</span>
           )}
