@@ -1,5 +1,6 @@
 // src/pages/Stats.tsx
 import { useEffect, useMemo, useState } from "react";
+import { Link } from "react-router-dom";
 import { supabase } from "../lib/supabase";
 
 type League = "nfl" | "ncaaf";
@@ -127,6 +128,7 @@ export default function Stats() {
   const [needsLogin, setNeedsLogin] = useState(false);
   const [rows, setRows] = useState<PickWithGame[]>([]);
   const [error, setError] = useState<string | null>(null);
+  const [userId, setUserId] = useState<string | null>(null);
 
   useEffect(() => {
     let mounted = true;
@@ -150,10 +152,13 @@ export default function Stats() {
 
       if (!user) {
         if (!mounted) return;
+        setUserId(null);
         setNeedsLogin(true);
         setLoading(false);
         return;
       }
+
+      setUserId(user.id);
 
       // 2) Fetch this user's NFL picks
       const { data: picksRaw, error: picksError } = await supabase
@@ -352,9 +357,19 @@ export default function Stats() {
 
   return (
     <div className="max-w-5xl mx-auto px-4 py-10 text-slate-200">
-      <h1 className="text-3xl font-bold text-yellow-400 mb-6">
-        Your Stats
-      </h1>
+      <div className="flex items-baseline justify-between gap-3 mb-2">
+        <h1 className="text-3xl font-bold text-yellow-400">
+          Your Stats
+        </h1>
+        {userId && (
+          <Link
+            to={`/u/${userId}`}
+            className="text-xs text-yellow-400 hover:text-yellow-300"
+          >
+            View Profile →
+          </Link>
+        )}
+      </div>
 
       {/* Top summary cards */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-5 mb-8">

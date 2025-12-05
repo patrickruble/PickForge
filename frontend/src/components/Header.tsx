@@ -99,15 +99,20 @@ export default function Header() {
     return null;
   }, [username, email]);
 
+  const handleLogout = async () => {
+    await supabase.auth.signOut();
+    navigate("/");
+  };
+
   const userBar = (
     <>
-      {displayName ? (
+      {displayName && userId ? (
         <>
+          {/* Avatar + name → go to user profile */}
           <Link
-            to="/username"
-            state={userId && email ? { userId, email } : undefined}
+            to={`/u/${userId}`}
             className="flex items-center gap-2 px-2 py-1 rounded bg-slate-800 border border-slate-700 hover:bg-slate-700 text-[11px] sm:text-xs"
-            title="Profile / username"
+            title="View profile"
           >
             <div className="w-6 h-6 rounded-full bg-slate-900 flex items-center justify-center overflow-hidden text-[0.7rem] font-bold text-yellow-400">
               {avatarUrl ? (
@@ -126,10 +131,7 @@ export default function Header() {
           </Link>
 
           <button
-            onClick={async () => {
-              await supabase.auth.signOut();
-              navigate("/");
-            }}
+            onClick={handleLogout}
             className="bg-yellow-400 text-black px-3 py-1 rounded-xl text-xs sm:text-sm"
           >
             Logout
@@ -150,7 +152,7 @@ export default function Header() {
   return (
     <header className="border-b border-slate-800 bg-slate-900">
       <div className="mx-auto max-w-6xl px-3 sm:px-4 py-2 sm:py-3 space-y-2">
-        {/* Row 1: PickForge logo + ForgeMaster / Logout */}
+        {/* Row 1: PickForge logo + user bar */}
         <div className="flex items-center justify-between gap-3">
           <Link to="/" className="pf-logo text-yellow-400">
             <span className="pf-logo-lock text-[0.6rem] font-bold">🔒</span>
@@ -159,9 +161,7 @@ export default function Header() {
             </span>
           </Link>
 
-          <div className="flex items-center gap-2">
-            {userBar}
-          </div>
+          <div className="flex items-center gap-2">{userBar}</div>
         </div>
 
         {/* Row 2: nav */}
