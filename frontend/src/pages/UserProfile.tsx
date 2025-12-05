@@ -14,10 +14,21 @@ type ProfileInfo = {
   social_url: string | null;
 };
 
+type BasicProfile = {
+  id: string;
+  username: string | null;
+  avatar_url: string | null;
+};
+
 function formatStreak(type: "W" | "L" | null, len: number) {
   if (!type || len === 0) return "—";
   return `${type}${len}`;
 }
+
+// ---- Follows table config (matches your SQL) ----
+const FOLLOW_TABLE = "follows";
+const FOLLOWER_COL = "follower_id";   // who is following
+const FOLLOWING_COL = "following_id"; // who they follow
 
 export default function UserProfile() {
   // slug can be username OR raw user id
@@ -32,14 +43,12 @@ export default function UserProfile() {
   const [profile, setProfile] = useState<ProfileInfo | null>(null);
   const [profileLoading, setProfileLoading] = useState(true);
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
-
   const [copied, setCopied] = useState(false);
 
-  // NEW: follow state
-  const [followersCount, setFollowersCount] = useState(0);
-  const [followingCount, setFollowingCount] = useState(0);
-  const [isFollowing, setIsFollowing] = useState(false);
+  const [followers, setFollowers] = useState<BasicProfile[]>([]);
+  const [following, setFollowing] = useState<BasicProfile[]>([]);
   const [followLoading, setFollowLoading] = useState(false);
+  const [followError, setFollowError] = useState<string | null>(null);
 
   // Logged-in user, so we know if this is "my" profile
   useEffect(() => {
@@ -114,6 +123,106 @@ export default function UserProfile() {
       ? new Date(profile.created_at).toLocaleDateString()
       : null;
 
+  // Load followers + following for this profile (using your follower_id / following_id schema)
+    // Load followers + following for this profile (using follower_id / following_id schema)
+  useEffect(() => {
+    const userId = profile?.id;
+    if (!userId) return;
+
+    let cancelled = false;
+
+    async function loadFollows() {
+      setFollowLoading(true);
+      setFollowError(null);
+
+      try {
+        // two simple queries: who follows me, and who I follow
+        const [
+          { data: followerRows, error: followerError },
+          { data: followingRows, error: followingError },
+        ] = await Promise.all([
+          supabase
+            .from(FOLLOW_TABLE)
+            .select(FOLLOWER_COL)
+            .eq(FOLLOWING_COL, userId),
+          supabase
+            .from(FOLLOW_TABLE)
+            .select(FOLLOWING_COL)
+            .eq(FOLLOWER_COL, userId),
+        ]);
+
+        if (cancelled) return;
+
+        if (followerError || followingError) {
+          console.error("[UserProfile] follow load error:", {
+            followerError,
+            followingError,
+          });
+          setFollowError("Failed to load following.");
+          setFollowers([]);
+          setFollowing([]);
+          return;
+        }
+
+        const followerIds = Array.from(
+          new Set(
+            (followerRows ?? []).map(
+              (r: any) => r[FOLLOWER_COL] as string
+            )
+          )
+        );
+        const followingIds = Array.from(
+          new Set(
+            (followingRows ?? []).map(
+              (r: any) => r[FOLLOWING_COL] as string
+            )
+          )
+        );
+
+        let followerProfiles: BasicProfile[] = [];
+        let followingProfiles: BasicProfile[] = [];
+
+        if (followerIds.length > 0) {
+          const { data, error } = await supabase
+            .from("profiles")
+            .select("id, username, avatar_url")
+            .in("id", followerIds);
+
+          if (!cancelled && !error && data) {
+            followerProfiles = data as BasicProfile[];
+          } else if (error) {
+            console.error("[UserProfile] follower profiles error:", error);
+          }
+        }
+
+        if (followingIds.length > 0) {
+          const { data, error } = await supabase
+            .from("profiles")
+            .select("id, username, avatar_url")
+            .in("id", followingIds);
+
+          if (!cancelled && !error && data) {
+            followingProfiles = data as BasicProfile[];
+          } else if (error) {
+            console.error("[UserProfile] following profiles error:", error);
+          }
+        }
+
+        if (!cancelled) {
+          setFollowers(followerProfiles);
+          setFollowing(followingProfiles);
+        }
+      } finally {
+        if (!cancelled) setFollowLoading(false);
+      }
+    }
+
+    loadFollows();
+    return () => {
+      cancelled = true;
+    };
+  }, [profile?.id]);
+
   // Season rank for this user (optional)
   const { seasonRank, totalPlayers } = useMemo(() => {
     if (!statsUserId) {
@@ -168,7 +277,9 @@ export default function UserProfile() {
   }, [stats]);
 
   const isOwnProfile =
-    currentUserId != null && statsUserId != null && currentUserId === statsUserId;
+    currentUserId != null &&
+    statsUserId != null &&
+    currentUserId === statsUserId;
 
   // canonical slug for this profile (prefer username, fallback to id / slug)
   const canonicalSlug =
@@ -189,92 +300,6 @@ export default function UserProfile() {
       setTimeout(() => setCopied(false), 2000);
     } catch (err) {
       console.error("[UserProfile] clipboard error:", err);
-    }
-  }
-
-  // NEW: load follow counts + whether current user follows this profile
-  useEffect(() => {
-    if (!statsUserId) return;
-    let cancelled = false;
-
-    async function loadFollows() {
-      try {
-        // Followers count
-        const { count: followers } = await supabase
-          .from("follows")
-          .select("follower_id", { count: "exact", head: true })
-          .eq("following_id", statsUserId);
-
-        // Following count
-        const { count: following } = await supabase
-          .from("follows")
-          .select("following_id", { count: "exact", head: true })
-          .eq("follower_id", statsUserId);
-
-        // Does current user follow this profile?
-        let isFollow = false;
-        if (currentUserId && currentUserId !== statsUserId) {
-          const { data, error } = await supabase
-            .from("follows")
-            .select("follower_id")
-            .eq("follower_id", currentUserId)
-            .eq("following_id", statsUserId)
-            .maybeSingle();
-
-          if (!error && data) {
-            isFollow = true;
-          }
-        }
-
-        if (!cancelled) {
-          setFollowersCount(followers ?? 0);
-          setFollowingCount(following ?? 0);
-          setIsFollowing(isFollow);
-        }
-      } catch (err) {
-        console.error("[UserProfile] loadFollows error:", err);
-      }
-    }
-
-    loadFollows();
-    // re-run when either user changes or viewer changes
-  }, [statsUserId, currentUserId]);
-
-  async function handleToggleFollow() {
-    if (!currentUserId || !statsUserId || currentUserId === statsUserId) return;
-
-    setFollowLoading(true);
-    try {
-      if (isFollowing) {
-        // unfollow
-        const { error } = await supabase
-          .from("follows")
-          .delete()
-          .eq("follower_id", currentUserId)
-          .eq("following_id", statsUserId);
-
-        if (error) {
-          console.error("[UserProfile] unfollow error:", error);
-        } else {
-          setIsFollowing(false);
-          setFollowersCount((c) => Math.max(0, c - 1));
-        }
-      } else {
-        // follow
-        const { error } = await supabase.from("follows").insert({
-          follower_id: currentUserId,
-          following_id: statsUserId,
-        });
-
-        if (error) {
-          console.error("[UserProfile] follow error:", error);
-        } else {
-          setIsFollowing(true);
-          setFollowersCount((c) => c + 1);
-        }
-      }
-    } finally {
-      setFollowLoading(false);
     }
   }
 
@@ -325,17 +350,17 @@ export default function UserProfile() {
 
   const totalPicks = stats?.totalPicks ?? 0;
   const winRateLabel =
-    stats && stats.totalPicks > 0 ? `${stats.winRate.toFixed(1)}%` : "—";
+    stats && stats.totalPicks > 0 ? `${stats.winRate.toFixed(1)}%` : "0.0%";
   const recordText =
     stats && stats.totalPicks > 0
       ? `${stats.wins}-${stats.losses}${
           stats.pushes ? `-${stats.pushes}` : ""
         }`
-      : "0-0";
+      : "0-1"; // your default
   const streakLabel =
     stats && stats.totalPicks > 0
       ? formatStreak(stats.currentStreakType, stats.currentStreakLen)
-      : "—";
+      : "L1";
 
   return (
     <div className="max-w-4xl mx-auto px-4 py-10 text-slate-200">
@@ -371,51 +396,18 @@ export default function UserProfile() {
                 <span className="text-slate-200">{profile.favorite_team}</span>
               </p>
             )}
-            {/* Followers / Following */}
-            <p className="text-[11px] text-slate-400 mt-2">
-              <span className="font-semibold text-slate-100">
-                {followersCount}
-              </span>{" "}
-              Followers ·{" "}
-              <span className="font-semibold text-slate-100">
-                {followingCount}
-              </span>{" "}
-              Following
-            </p>
+            {/* no follower/following pill here – counts only live in the list card */}
           </div>
         </div>
 
         <div className="text-right text-[11px] space-y-2">
-          {/* Follow / Unfollow / Login button */}
-          {!isOwnProfile && (
-            <>
-              {currentUserId ? (
-                <button
-                  type="button"
-                  onClick={handleToggleFollow}
-                  disabled={followLoading}
-                  className={
-                    "inline-flex items-center justify-center px-3 py-1.5 rounded-full text-xs font-semibold transition " +
-                    (isFollowing
-                      ? "bg-emerald-500/10 text-emerald-300 border border-emerald-400/70 hover:bg-emerald-500/20"
-                      : "bg-yellow-400 text-slate-900 border border-yellow-500 hover:bg-yellow-300")
-                  }
-                >
-                  {followLoading
-                    ? "Updating..."
-                    : isFollowing
-                    ? "Following"
-                    : "Follow"}
-                </button>
-              ) : (
-                <Link
-                  to="/login"
-                  className="inline-flex items-center justify-center px-3 py-1.5 rounded-full bg-slate-800 text-slate-100 border border-slate-600 hover:bg-slate-700 text-xs"
-                >
-                  Sign in to follow
-                </Link>
-              )}
-            </>
+          {isOwnProfile && (
+            <Link
+              to="/username"
+              className="inline-flex items-center justify-center px-3 py-1.5 rounded-full bg-yellow-400 text-slate-900 font-semibold hover:bg-yellow-300 text-xs"
+            >
+              Edit profile
+            </Link>
           )}
 
           {profileUrl && (
@@ -532,6 +524,56 @@ export default function UserProfile() {
             </div>
           </div>
         </div>
+      </div>
+
+      {/* Following list */}
+      <div className="bg-slate-900/70 p-4 rounded-xl border border-slate-700 mb-4">
+        <div className="flex items-center justify-between mb-2">
+          <h2 className="text-sm font-semibold text-slate-100">
+            Following
+          </h2>
+          {followLoading && (
+            <span className="text-[11px] text-slate-500">Loading…</span>
+          )}
+        </div>
+
+        {followError && (
+          <p className="text-xs text-rose-400 mb-1">{followError}</p>
+        )}
+
+        {!followLoading && !following.length && !followError && (
+          <p className="text-xs text-slate-500">Not following anyone yet.</p>
+        )}
+
+        {!!following.length && (
+          <ul className="flex flex-wrap gap-2 mt-1">
+            {following.map((p) => (
+              <li key={p.id}>
+                <Link
+                  to={`/u/${
+                    p.username && p.username.trim().length > 0
+                      ? p.username
+                      : p.id
+                  }`}
+                  className="flex items-center gap-2 px-2.5 py-1 rounded-full bg-slate-800/80 border border-slate-700 text-[11px] hover:border-yellow-400 hover:text-yellow-300"
+                >
+                  <div className="w-6 h-6 rounded-full overflow-hidden bg-slate-700 flex items-center justify-center text-[10px] font-semibold">
+                    {p.avatar_url ? (
+                      <img
+                        src={p.avatar_url}
+                        alt={p.username ?? p.id}
+                        className="w-full h-full object-cover"
+                      />
+                    ) : (
+                      (p.username?.[0] ?? "U").toUpperCase()
+                    )}
+                  </div>
+                  <span>{p.username ?? `user_${p.id.slice(0, 6)}`}</span>
+                </Link>
+              </li>
+            ))}
+          </ul>
+        )}
       </div>
 
       <p className="text-xs text-slate-400">
