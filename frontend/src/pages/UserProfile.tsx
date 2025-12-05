@@ -32,7 +32,14 @@ export default function UserProfile() {
   const [profile, setProfile] = useState<ProfileInfo | null>(null);
   const [profileLoading, setProfileLoading] = useState(true);
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
+
   const [copied, setCopied] = useState(false);
+
+  // NEW: follow state
+  const [followersCount, setFollowersCount] = useState(0);
+  const [followingCount, setFollowingCount] = useState(0);
+  const [isFollowing, setIsFollowing] = useState(false);
+  const [followLoading, setFollowLoading] = useState(false);
 
   // Logged-in user, so we know if this is "my" profile
   useEffect(() => {
@@ -54,59 +61,32 @@ export default function UserProfile() {
     };
   }, []);
 
-  // Load profile info: first by id, then by username
+  // Load profile info (lookup by id OR username)
   useEffect(() => {
     if (!slug) return;
     let cancelled = false;
 
     async function loadProfile() {
       setProfileLoading(true);
+      const { data, error } = await supabase
+        .from("profiles")
+        .select(
+          "id, username, avatar_url, created_at, bio, favorite_team, social_url"
+        )
+        .or(`id.eq.${slug},username.eq.${slug}`)
+        .maybeSingle();
 
-      try {
-        // 1) Try lookup by ID (UUID)
-        let finalProfile: ProfileInfo | null = null;
+      if (cancelled) return;
 
-        const { data: byId, error: idError } = await supabase
-          .from("profiles")
-          .select(
-            "id, username, avatar_url, created_at, bio, favorite_team, social_url"
-          )
-          .eq("id", slug)
-          .maybeSingle();
-
-        if (idError) {
-          console.error("[UserProfile] profile load error by id:", idError);
-        }
-
-        if (byId) {
-          finalProfile = byId as ProfileInfo;
-        } else {
-          // 2) Fallback: lookup by username
-          const { data: byUsername, error: usernameError } = await supabase
-            .from("profiles")
-            .select(
-              "id, username, avatar_url, created_at, bio, favorite_team, social_url"
-            )
-            .eq("username", slug) // change to .ilike(slug) if you want case-insensitive
-            .maybeSingle();
-
-          if (usernameError) {
-            console.error(
-              "[UserProfile] profile load error by username:",
-              usernameError
-            );
-          }
-
-          if (byUsername) {
-            finalProfile = byUsername as ProfileInfo;
-          }
-        }
-
-        if (cancelled) return;
-        setProfile(finalProfile);
-      } finally {
-        if (!cancelled) setProfileLoading(false);
+      if (error) {
+        console.error("[UserProfile] profile load error:", error);
+        setProfile(null);
+      } else if (data) {
+        setProfile(data as ProfileInfo);
+      } else {
+        setProfile(null);
       }
+      setProfileLoading(false);
     }
 
     loadProfile();
@@ -212,6 +192,92 @@ export default function UserProfile() {
     }
   }
 
+  // NEW: load follow counts + whether current user follows this profile
+  useEffect(() => {
+    if (!statsUserId) return;
+    let cancelled = false;
+
+    async function loadFollows() {
+      try {
+        // Followers count
+        const { count: followers } = await supabase
+          .from("follows")
+          .select("follower_id", { count: "exact", head: true })
+          .eq("following_id", statsUserId);
+
+        // Following count
+        const { count: following } = await supabase
+          .from("follows")
+          .select("following_id", { count: "exact", head: true })
+          .eq("follower_id", statsUserId);
+
+        // Does current user follow this profile?
+        let isFollow = false;
+        if (currentUserId && currentUserId !== statsUserId) {
+          const { data, error } = await supabase
+            .from("follows")
+            .select("follower_id")
+            .eq("follower_id", currentUserId)
+            .eq("following_id", statsUserId)
+            .maybeSingle();
+
+          if (!error && data) {
+            isFollow = true;
+          }
+        }
+
+        if (!cancelled) {
+          setFollowersCount(followers ?? 0);
+          setFollowingCount(following ?? 0);
+          setIsFollowing(isFollow);
+        }
+      } catch (err) {
+        console.error("[UserProfile] loadFollows error:", err);
+      }
+    }
+
+    loadFollows();
+    // re-run when either user changes or viewer changes
+  }, [statsUserId, currentUserId]);
+
+  async function handleToggleFollow() {
+    if (!currentUserId || !statsUserId || currentUserId === statsUserId) return;
+
+    setFollowLoading(true);
+    try {
+      if (isFollowing) {
+        // unfollow
+        const { error } = await supabase
+          .from("follows")
+          .delete()
+          .eq("follower_id", currentUserId)
+          .eq("following_id", statsUserId);
+
+        if (error) {
+          console.error("[UserProfile] unfollow error:", error);
+        } else {
+          setIsFollowing(false);
+          setFollowersCount((c) => Math.max(0, c - 1));
+        }
+      } else {
+        // follow
+        const { error } = await supabase.from("follows").insert({
+          follower_id: currentUserId,
+          following_id: statsUserId,
+        });
+
+        if (error) {
+          console.error("[UserProfile] follow error:", error);
+        } else {
+          setIsFollowing(true);
+          setFollowersCount((c) => c + 1);
+        }
+      }
+    } finally {
+      setFollowLoading(false);
+    }
+  }
+
   // ---------- LOADING / ERROR STATES ----------
 
   if (statsLoading || profileLoading) {
@@ -235,6 +301,7 @@ export default function UserProfile() {
     );
   }
 
+  // Only treat "not found" as "no profile"
   if (!slug || !profile) {
     return (
       <div className="min-h-[60vh] flex items-center justify-center text-slate-300">
@@ -304,17 +371,51 @@ export default function UserProfile() {
                 <span className="text-slate-200">{profile.favorite_team}</span>
               </p>
             )}
+            {/* Followers / Following */}
+            <p className="text-[11px] text-slate-400 mt-2">
+              <span className="font-semibold text-slate-100">
+                {followersCount}
+              </span>{" "}
+              Followers ·{" "}
+              <span className="font-semibold text-slate-100">
+                {followingCount}
+              </span>{" "}
+              Following
+            </p>
           </div>
         </div>
 
         <div className="text-right text-[11px] space-y-2">
-          {isOwnProfile && (
-            <Link
-              to="/username"
-              className="inline-flex items-center justify-center px-3 py-1.5 rounded-full bg-yellow-400 text-slate-900 font-semibold hover:bg-yellow-300 text-xs"
-            >
-              Edit profile
-            </Link>
+          {/* Follow / Unfollow / Login button */}
+          {!isOwnProfile && (
+            <>
+              {currentUserId ? (
+                <button
+                  type="button"
+                  onClick={handleToggleFollow}
+                  disabled={followLoading}
+                  className={
+                    "inline-flex items-center justify-center px-3 py-1.5 rounded-full text-xs font-semibold transition " +
+                    (isFollowing
+                      ? "bg-emerald-500/10 text-emerald-300 border border-emerald-400/70 hover:bg-emerald-500/20"
+                      : "bg-yellow-400 text-slate-900 border border-yellow-500 hover:bg-yellow-300")
+                  }
+                >
+                  {followLoading
+                    ? "Updating..."
+                    : isFollowing
+                    ? "Following"
+                    : "Follow"}
+                </button>
+              ) : (
+                <Link
+                  to="/login"
+                  className="inline-flex items-center justify-center px-3 py-1.5 rounded-full bg-slate-800 text-slate-100 border border-slate-600 hover:bg-slate-700 text-xs"
+                >
+                  Sign in to follow
+                </Link>
+              )}
+            </>
           )}
 
           {profileUrl && (
