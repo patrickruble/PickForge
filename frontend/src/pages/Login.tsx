@@ -28,6 +28,11 @@ export default function Login() {
   const [resending, setResending] = useState(false);
   const [resendMsg, setResendMsg] = useState<string | null>(null);
 
+  // forgot password
+  const [resetLoading, setResetLoading] = useState(false);
+  const [resetMessage, setResetMessage] = useState<string | null>(null);
+  const [resetError, setResetError] = useState<string | null>(null);
+
   // UX
   const [loading, setLoading] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
@@ -119,6 +124,8 @@ export default function Login() {
     e.preventDefault();
     setError(null);
     setNotice(null);
+    setResetError(null);
+    setResetMessage(null);
     setLoading(true);
 
     const { data, error } = await supabase.auth.signInWithPassword({
@@ -143,6 +150,8 @@ export default function Login() {
     e.preventDefault();
     setError(null);
     setNotice(null);
+    setResetError(null);
+    setResetMessage(null);
 
     if (signupPassword.length < 6) {
       return setError("Password must be at least 6 characters.");
@@ -198,6 +207,8 @@ export default function Login() {
     e.preventDefault();
     setError(null);
     setNotice(null);
+    setResetError(null);
+    setResetMessage(null);
     setLoading(true);
     const { error } = await supabase.auth.signInWithOtp({
       email: magicEmail.trim(),
@@ -211,6 +222,38 @@ export default function Login() {
     setNotice(
       `Magic link sent to ${magicEmail}. Open it in this same browser.`
     );
+  }
+
+  async function handleForgotPassword() {
+    setResetError(null);
+    setResetMessage(null);
+
+    const email = loginEmail.trim();
+    if (!email) {
+      setResetError("Enter your email above, then click Forgot password.");
+      return;
+    }
+
+    try {
+      setResetLoading(true);
+
+      const redirectTo = `${window.location.origin}/reset-password`;
+
+      const { error } = await supabase.auth.resetPasswordForEmail(email, {
+        redirectTo,
+      });
+
+      if (error) {
+        console.error("[Login] resetPasswordForEmail error:", error);
+        setResetError("Could not send reset email. Double-check your email.");
+      } else {
+        setResetMessage(
+          "If that email exists, a reset link has been sent to your inbox."
+        );
+      }
+    } finally {
+      setResetLoading(false);
+    }
   }
 
   // -------- render: already signed in --------
@@ -328,6 +371,24 @@ export default function Login() {
               </button>
             </form>
 
+            {/* Forgot password */}
+            <div className="mt-3 text-xs text-center text-slate-400">
+              <button
+                type="button"
+                onClick={handleForgotPassword}
+                disabled={resetLoading}
+                className="text-yellow-300 hover:text-yellow-200 disabled:opacity-60"
+              >
+                {resetLoading ? "Sending reset link…" : "Forgot password?"}
+              </button>
+              {resetMessage && (
+                <p className="mt-1 text-emerald-300">{resetMessage}</p>
+              )}
+              {resetError && (
+                <p className="mt-1 text-rose-300">{resetError}</p>
+              )}
+            </div>
+
             <div className="my-5 text-center text-slate-500 text-sm">or</div>
 
             {/* Signup form */}
@@ -396,7 +457,7 @@ export default function Login() {
             <button
               type="submit"
               disabled={loading}
-              className={`w-full py-2 rounded-XL font-semibold ${
+              className={`w-full py-2 rounded-xl font-semibold ${
                 loading
                   ? "opacity-70 pointer-events-none"
                   : "bg-yellow-400 text-black hover:bg-yellow-300"

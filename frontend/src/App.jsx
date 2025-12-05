@@ -1,4 +1,5 @@
 // src/App.tsx
+// src/App.tsx
 import { BrowserRouter, Routes, Route } from "react-router-dom";
 import "./App.css";
 import Header from "./components/Header";
@@ -9,7 +10,8 @@ import Stats from "./pages/Stats";
 import Login from "./pages/Login";
 import Username from "./pages/Username";
 import AuthCallback from "./pages/AuthCallback";
-import UserProfile from "./pages/UserProfile"; // ✅ NEW
+import UserProfile from "./pages/UserProfile";
+import ResetPassword from "./pages/ResetPassword";
 
 export default function App() {
   return (
@@ -25,8 +27,10 @@ export default function App() {
             <Route path="/stats" element={<Stats />} />
             <Route path="/login" element={<Login />} />
             <Route path="/username" element={<Username />} />
+            <Route path="/reset-password" element={<ResetPassword />} /> {/* NEW */}
             <Route path="/auth/callback" element={<AuthCallback />} />
-            <Route path="/u/:userId" element={<UserProfile />} /> {/* NEW */}
+            {/* use a generic slug so it can be either username or id */}
+            <Route path="/u/:slug" element={<UserProfile />} />
           </Routes>
         </main>
 

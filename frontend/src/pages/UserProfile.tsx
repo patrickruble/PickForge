@@ -20,7 +20,8 @@ function formatStreak(type: "W" | "L" | null, len: number) {
 }
 
 export default function UserProfile() {
-  const { userId } = useParams<{ userId: string }>();
+  // slug can be username OR raw user id
+  const { slug } = useParams<{ slug: string }>();
 
   const {
     statsByUser,
@@ -33,9 +34,7 @@ export default function UserProfile() {
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
 
-  const stats = userId ? statsByUser[userId] : undefined;
-
-  // Logged-in user id so we can tell if this is "my" profile
+  // Logged-in user, so we know if this is "my" profile
   useEffect(() => {
     let cancelled = false;
 
@@ -55,9 +54,9 @@ export default function UserProfile() {
     };
   }, []);
 
-  // Load profile info (username, avatar, joined date, extras)
+  // Load profile info (lookup by id OR username)
   useEffect(() => {
-    if (!userId) return;
+    if (!slug) return;
     let cancelled = false;
 
     async function loadProfile() {
@@ -67,7 +66,7 @@ export default function UserProfile() {
         .select(
           "id, username, avatar_url, created_at, bio, favorite_team, social_url"
         )
-        .eq("id", userId)
+        .or(`id.eq.${slug},username.eq.${slug}`)
         .maybeSingle();
 
       if (cancelled) return;
@@ -87,13 +86,18 @@ export default function UserProfile() {
     return () => {
       cancelled = true;
     };
-  }, [userId]);
+  }, [slug]);
+
+  const statsUserId = profile?.id ?? null;
+  const stats = statsUserId ? statsByUser[statsUserId] : undefined;
 
   const displayName =
     profile?.username && profile.username.trim().length > 0
       ? profile.username
-      : userId
-      ? `user_${userId.slice(0, 6)}`
+      : profile
+      ? `user_${profile.id.slice(0, 6)}`
+      : slug
+      ? slug
       : "Player";
 
   const initial = (displayName[0] ?? "?").toUpperCase();
@@ -103,8 +107,12 @@ export default function UserProfile() {
       ? new Date(profile.created_at).toLocaleDateString()
       : null;
 
-  // Season rank for this user
+  // Season rank for this user (optional)
   const { seasonRank, totalPlayers } = useMemo(() => {
+    if (!statsUserId) {
+      return { seasonRank: null as number | null, totalPlayers: 0 };
+    }
+
     const entries = Object.entries(statsByUser).filter(
       ([, s]) => s.totalPicks > 0
     );
@@ -116,16 +124,16 @@ export default function UserProfile() {
       return sb.wins - sa.wins;
     });
 
-    const index = entries.findIndex(([id]) => id === userId);
+    const index = entries.findIndex(([id]) => id === statsUserId);
     return {
       seasonRank: index >= 0 ? index + 1 : null,
       totalPlayers: entries.length,
     };
-  }, [statsByUser, userId]);
+  }, [statsUserId, statsByUser]);
 
   // Simple badge system
   const badges: string[] = useMemo(() => {
-    if (!stats) return [];
+    if (!stats) return ["Rookie Season"];
 
     const list: string[] = [];
 
@@ -153,12 +161,18 @@ export default function UserProfile() {
   }, [stats]);
 
   const isOwnProfile =
-    currentUserId != null && userId != null && currentUserId === userId;
+    currentUserId != null && statsUserId != null && currentUserId === statsUserId;
+
+  // canonical slug for this profile (prefer username, fallback to id / slug)
+  const canonicalSlug =
+    profile?.username && profile.username.trim().length > 0
+      ? profile.username.trim()
+      : profile?.id ?? slug ?? "";
 
   const profileUrl = useMemo(() => {
-    if (typeof window === "undefined" || !userId) return "";
-    return `${window.location.origin}/u/${userId}`;
-  }, [userId]);
+    if (typeof window === "undefined" || !canonicalSlug) return "";
+    return `${window.location.origin}/u/${canonicalSlug}`;
+  }, [canonicalSlug]);
 
   async function handleCopyProfile() {
     if (!profileUrl) return;
@@ -194,12 +208,13 @@ export default function UserProfile() {
     );
   }
 
-  if (!userId || !stats) {
+  // Only treat "not found" as "no profile"
+  if (!slug || !profile) {
     return (
       <div className="min-h-[60vh] flex items-center justify-center text-slate-300">
         <div className="bg-slate-900/70 px-6 py-4 rounded-xl border border-slate-700 text-center">
           <p className="mb-2 font-semibold text-yellow-400">Player not found</p>
-          <p>This user either does not exist or has no graded picks yet.</p>
+          <p>This user either does not exist or has not set up a profile yet.</p>
           <div className="mt-3">
             <Link
               to="/leaderboard"
@@ -215,9 +230,19 @@ export default function UserProfile() {
 
   // ---------- MAIN UI ----------
 
-  const recordText = `${stats.wins}-${stats.losses}${
-    stats.pushes ? `-${stats.pushes}` : ""
-  }`;
+  const totalPicks = stats?.totalPicks ?? 0;
+  const winRateLabel =
+    stats && stats.totalPicks > 0 ? `${stats.winRate.toFixed(1)}%` : "—";
+  const recordText =
+    stats && stats.totalPicks > 0
+      ? `${stats.wins}-${stats.losses}${
+          stats.pushes ? `-${stats.pushes}` : ""
+        }`
+      : "0-0";
+  const streakLabel =
+    stats && stats.totalPicks > 0
+      ? formatStreak(stats.currentStreakType, stats.currentStreakLen)
+      : "—";
 
   return (
     <div className="max-w-4xl mx-auto px-4 py-10 text-slate-200">
@@ -225,7 +250,7 @@ export default function UserProfile() {
       <div className="flex items-center justify-between mb-6 gap-3">
         <div className="flex items-center gap-3">
           <div className="w-12 h-12 sm:w-14 sm:h-14 rounded-full overflow-hidden bg-slate-700 flex items-center justify-center text-lg font-semibold text-slate-100 border border-slate-600">
-            {profile?.avatar_url ? (
+            {profile.avatar_url ? (
               <img
                 src={profile.avatar_url}
                 alt={displayName}
@@ -247,7 +272,7 @@ export default function UserProfile() {
                 Joined {createdLabel}
               </p>
             )}
-            {profile?.favorite_team && (
+            {profile.favorite_team && (
               <p className="text-[11px] text-slate-400 mt-1">
                 Favorite team:{" "}
                 <span className="text-slate-200">{profile.favorite_team}</span>
@@ -285,7 +310,7 @@ export default function UserProfile() {
             </Link>
           </div>
 
-          {profile?.social_url && (
+          {profile.social_url && (
             <div>
               <a
                 href={profile.social_url}
@@ -306,16 +331,14 @@ export default function UserProfile() {
           <p className="text-xs uppercase tracking-wide text-slate-400">
             Total Picks
           </p>
-          <p className="text-2xl mt-1 font-bold">{stats.totalPicks}</p>
+          <p className="text-2xl mt-1 font-bold">{totalPicks}</p>
         </div>
 
         <div className="bg-slate-900/70 p-4 rounded-xl border border-slate-700">
           <p className="text-xs uppercase tracking-wide text-slate-400">
             Win Rate
           </p>
-          <p className="text-2xl mt-1 font-bold">
-            {stats.totalPicks === 0 ? "—" : `${stats.winRate.toFixed(1)}%`}
-          </p>
+          <p className="text-2xl mt-1 font-bold">{winRateLabel}</p>
         </div>
 
         <div className="bg-slate-900/70 p-4 rounded-xl border border-slate-700">
@@ -329,9 +352,7 @@ export default function UserProfile() {
           <p className="text-xs uppercase tracking-wide text-slate-400">
             Current Streak
           </p>
-          <p className="text-2xl mt-1 font-bold">
-            {formatStreak(stats.currentStreakType, stats.currentStreakLen)}
-          </p>
+          <p className="text-2xl mt-1 font-bold">{streakLabel}</p>
         </div>
       </div>
 
@@ -339,7 +360,7 @@ export default function UserProfile() {
       <div className="grid gap-6 md:grid-cols-[2fr,1.5fr] mb-8">
         <div className="bg-slate-900/70 p-4 rounded-xl border border-slate-700">
           <h2 className="text-sm font-semibold text-slate-100 mb-2">About</h2>
-          {profile?.bio && profile.bio.trim().length > 0 ? (
+          {profile.bio && profile.bio.trim().length > 0 ? (
             <p className="text-sm text-slate-300 whitespace-pre-line">
               {profile.bio}
             </p>
@@ -355,15 +376,13 @@ export default function UserProfile() {
             Season placement
           </h2>
           {seasonRank && totalPlayers > 0 ? (
-            <>
-              <p className="text-sm text-slate-300">
-                Currently{" "}
-                <span className="font-semibold text-yellow-400">
-                  #{seasonRank}
-                </span>{" "}
-                of {totalPlayers} players on the season leaderboard.
-              </p>
-            </>
+            <p className="text-sm text-slate-300">
+              Currently{" "}
+              <span className="font-semibold text-yellow-400">
+                #{seasonRank}
+              </span>{" "}
+              of {totalPlayers} players on the season leaderboard.
+            </p>
           ) : (
             <p className="text-xs text-slate-500">
               Season rank will appear once this player has graded picks.
