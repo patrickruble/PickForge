@@ -54,32 +54,59 @@ export default function UserProfile() {
     };
   }, []);
 
-  // Load profile info (lookup by id OR username)
+  // Load profile info: first by id, then by username
   useEffect(() => {
     if (!slug) return;
     let cancelled = false;
 
     async function loadProfile() {
       setProfileLoading(true);
-      const { data, error } = await supabase
-        .from("profiles")
-        .select(
-          "id, username, avatar_url, created_at, bio, favorite_team, social_url"
-        )
-        .or(`id.eq.${slug},username.eq.${slug}`)
-        .maybeSingle();
 
-      if (cancelled) return;
+      try {
+        // 1) Try lookup by ID (UUID)
+        let finalProfile: ProfileInfo | null = null;
 
-      if (error) {
-        console.error("[UserProfile] profile load error:", error);
-        setProfile(null);
-      } else if (data) {
-        setProfile(data as ProfileInfo);
-      } else {
-        setProfile(null);
+        const { data: byId, error: idError } = await supabase
+          .from("profiles")
+          .select(
+            "id, username, avatar_url, created_at, bio, favorite_team, social_url"
+          )
+          .eq("id", slug)
+          .maybeSingle();
+
+        if (idError) {
+          console.error("[UserProfile] profile load error by id:", idError);
+        }
+
+        if (byId) {
+          finalProfile = byId as ProfileInfo;
+        } else {
+          // 2) Fallback: lookup by username
+          const { data: byUsername, error: usernameError } = await supabase
+            .from("profiles")
+            .select(
+              "id, username, avatar_url, created_at, bio, favorite_team, social_url"
+            )
+            .eq("username", slug) // change to .ilike(slug) if you want case-insensitive
+            .maybeSingle();
+
+          if (usernameError) {
+            console.error(
+              "[UserProfile] profile load error by username:",
+              usernameError
+            );
+          }
+
+          if (byUsername) {
+            finalProfile = byUsername as ProfileInfo;
+          }
+        }
+
+        if (cancelled) return;
+        setProfile(finalProfile);
+      } finally {
+        if (!cancelled) setProfileLoading(false);
       }
-      setProfileLoading(false);
     }
 
     loadProfile();
@@ -208,7 +235,6 @@ export default function UserProfile() {
     );
   }
 
-  // Only treat "not found" as "no profile"
   if (!slug || !profile) {
     return (
       <div className="min-h-[60vh] flex items-center justify-center text-slate-300">
