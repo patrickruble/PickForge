@@ -88,6 +88,9 @@ export default function Leaderboard() {
   // Week vs season view
   const [viewMode, setViewMode] = useState<"week" | "season">("week");
 
+  // Search term for players
+  const [searchTerm, setSearchTerm] = useState("");
+
   // Season-long stats for each user
   const { statsByUser, loading: statsLoading } = useAllUserStats();
 
@@ -251,7 +254,7 @@ export default function Leaderboard() {
     return Array.from(map.values());
   }, [weekAggregated, seasonAggregated]);
 
-  // Load profiles for any user ids we don't know yet
+  // Load profiles for any user ids we do not know yet
   useEffect(() => {
     const unknownIds = allAggregatedForProfiles
       .filter((i) => profilesMap[i.user_id] === undefined)
@@ -299,6 +302,27 @@ export default function Leaderboard() {
 
   const activeAggregated =
     viewMode === "week" ? weekAggregated : seasonAggregated;
+
+  // Filtered list based on search term
+  const filteredAggregated: LeaderItem[] = useMemo(() => {
+    const term = searchTerm.trim().toLowerCase();
+    if (!term) return activeAggregated;
+
+    return activeAggregated.filter((item) => {
+      const profile = item.profile;
+      const username = profile?.username ?? "";
+      const baseLabel =
+        username && username.trim().length > 0
+          ? username
+          : `user_${item.user_id.slice(0, 6)}`;
+      const handle = baseLabel.toLowerCase().replace(/\s+/g, "");
+
+      return (
+        baseLabel.toLowerCase().includes(term) ||
+        handle.includes(term)
+      );
+    });
+  }, [activeAggregated, searchTerm]);
 
   const totalPlayers = useMemo(
     () => new Set(activeAggregated.map((r) => r.user_id)).size,
@@ -396,6 +420,17 @@ export default function Leaderboard() {
               Season
             </button>
           </div>
+
+          {/* Search input */}
+          <div className="w-full sm:w-44 md:w-56">
+            <input
+              type="text"
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              placeholder="Search players"
+              className="w-full rounded-full bg-slate-900/80 border border-slate-700/80 px-3 py-1 text-[11px] sm:text-xs text-slate-100 placeholder-slate-500 focus:outline-none focus:ring-1 focus:ring-yellow-400"
+            />
+          </div>
         </div>
       </header>
 
@@ -408,7 +443,7 @@ export default function Leaderboard() {
       </div>
 
       <ol className="space-y-2 sm:space-y-3">
-        {activeAggregated.map((item, idx) => {
+        {filteredAggregated.map((item, idx) => {
           const profile = item.profile;
           const username = profile?.username ?? null;
           const label =
