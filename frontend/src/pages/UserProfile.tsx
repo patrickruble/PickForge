@@ -2,10 +2,7 @@
 import { useEffect, useState } from "react";
 import { useParams, Link } from "react-router-dom";
 import { supabase } from "../lib/supabase";
-import {
-  useAllUserStats,
-  UserSeasonStats,
-} from "../hooks/useAllUserStats";
+import { useAllUserStats } from "../hooks/useAllUserStats";
 
 type ProfileInfo = {
   id: string;
@@ -28,13 +25,13 @@ export default function UserProfile() {
     error: statsError,
   } = useAllUserStats();
 
-  const stats: UserSeasonStats | undefined = userId
-    ? (statsByUser[userId] as UserSeasonStats | undefined)
-    : undefined;
-
   const [profile, setProfile] = useState<ProfileInfo | null>(null);
   const [profileLoading, setProfileLoading] = useState(true);
 
+  // Pull this user's season stats from the shared map
+  const stats = userId ? statsByUser[userId] : undefined;
+
+  // Load profile info (username, avatar, joined date)
   useEffect(() => {
     if (!userId) return;
     let cancelled = false;
@@ -82,7 +79,7 @@ export default function UserProfile() {
       ? new Date(profile.created_at).toLocaleDateString()
       : null;
 
-  // ---------- LOADING / ERROR ----------
+  // ---------- LOADING / ERROR STATES ----------
 
   if (statsLoading || profileLoading) {
     return (
@@ -105,12 +102,20 @@ export default function UserProfile() {
     );
   }
 
-  if (!stats) {
+  if (!userId || !stats) {
     return (
       <div className="min-h-[60vh] flex items-center justify-center text-slate-300">
         <div className="bg-slate-900/70 px-6 py-4 rounded-xl border border-slate-700 text-center">
           <p className="mb-2 font-semibold text-yellow-400">Player not found</p>
-          <p>This user either doesn’t exist or has no graded picks yet.</p>
+          <p>This user either does not exist or has no graded picks yet.</p>
+          <div className="mt-3">
+            <Link
+              to="/leaderboard"
+              className="inline-flex items-center gap-1 px-3 py-1.5 rounded-full bg-slate-900/80 border border-slate-700/80 text-slate-300 hover:text-slate-100 text-xs"
+            >
+              ← Back to leaderboard
+            </Link>
+          </div>
         </div>
       </div>
     );
@@ -118,8 +123,13 @@ export default function UserProfile() {
 
   // ---------- MAIN UI ----------
 
+  const recordText = `${stats.wins}-${stats.losses}${
+    stats.pushes ? `-${stats.pushes}` : ""
+  }`;
+
   return (
     <div className="max-w-4xl mx-auto px-4 py-10 text-slate-200">
+      {/* Header */}
       <div className="flex items-center justify-between mb-6 gap-3">
         <div className="flex items-center gap-3">
           <div className="w-12 h-12 sm:w-14 sm:h-14 rounded-full overflow-hidden bg-slate-700 flex items-center justify-center text-lg font-semibold text-slate-100 border border-slate-600">
@@ -158,7 +168,7 @@ export default function UserProfile() {
       </div>
 
       {/* Summary cards */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-5 mb-6">
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-5 mb-8">
         <div className="bg-slate-900/70 p-4 rounded-xl border border-slate-700">
           <p className="text-xs uppercase tracking-wide text-slate-400">
             Total Picks
@@ -177,21 +187,11 @@ export default function UserProfile() {
 
         <div className="bg-slate-900/70 p-4 rounded-xl border border-slate-700">
           <p className="text-xs uppercase tracking-wide text-slate-400">
-            Wins
+            Record
           </p>
-          <p className="text-2xl mt-1 font-bold">{stats.wins}</p>
+          <p className="text-2xl mt-1 font-bold">{recordText}</p>
         </div>
 
-        <div className="bg-slate-900/70 p-4 rounded-xl border border-slate-700">
-          <p className="text-xs uppercase tracking-wide text-slate-400">
-            Losses
-          </p>
-          <p className="text-2xl mt-1 font-bold">{stats.losses}</p>
-        </div>
-      </div>
-
-      {/* Extra season info */}
-      <div className="grid grid-cols-2 sm:grid-cols-3 gap-5">
         <div className="bg-slate-900/70 p-4 rounded-xl border border-slate-700">
           <p className="text-xs uppercase tracking-wide text-slate-400">
             Current Streak
@@ -200,22 +200,12 @@ export default function UserProfile() {
             {formatStreak(stats.currentStreakType, stats.currentStreakLen)}
           </p>
         </div>
-        <div className="bg-slate-900/70 p-4 rounded-xl border border-slate-700">
-          <p className="text-xs uppercase tracking-wide text-slate-400">
-            Pushes
-          </p>
-          <p className="text-2xl mt-1 font-bold">{stats.pushes}</p>
-        </div>
-        <div className="bg-slate-900/70 p-4 rounded-xl border border-slate-700 hidden sm:block">
-          <p className="text-xs uppercase tracking-wide text-slate-400">
-            Season Record
-          </p>
-          <p className="text-2xl mt-1 font-bold">
-            {stats.wins}-{stats.losses}
-            {stats.pushes ? `-${stats.pushes}` : ""}
-          </p>
-        </div>
       </div>
+
+      <p className="text-xs text-slate-400">
+        These numbers are season-long NFL results based on all finished games,
+        using the spread or moneyline you locked in at pick time.
+      </p>
     </div>
   );
 }
