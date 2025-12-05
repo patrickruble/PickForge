@@ -1,5 +1,4 @@
 // src/App.tsx
-// src/App.tsx
 import { BrowserRouter, Routes, Route } from "react-router-dom";
 import "./App.css";
 import Header from "./components/Header";
@@ -12,7 +11,9 @@ import Username from "./pages/Username";
 import AuthCallback from "./pages/AuthCallback";
 import UserProfile from "./pages/UserProfile";
 import ResetPassword from "./pages/ResetPassword";
-import Feed from "./pages/Feed"; 
+import Feed from "./pages/Feed";
+import Leagues from "./pages/Leagues";
+import LeagueLeaderboard from "./pages/LeagueLeaderboard";
 
 export default function App() {
   return (
@@ -28,9 +29,11 @@ export default function App() {
             <Route path="/stats" element={<Stats />} />
             <Route path="/login" element={<Login />} />
             <Route path="/username" element={<Username />} />
-            <Route path="/reset-password" element={<ResetPassword />} /> {/* NEW */}
+            <Route path="/reset-password" element={<ResetPassword />} />
             <Route path="/auth/callback" element={<AuthCallback />} />
             <Route path="/feed" element={<Feed />} />
+            <Route path="/leagues" element={<Leagues />} />
+            <Route path="/league/:leagueId" element={<LeagueLeaderboard />} />
             {/* use a generic slug so it can be either username or id */}
             <Route path="/u/:slug" element={<UserProfile />} />
           </Routes>

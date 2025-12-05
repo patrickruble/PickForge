@@ -194,14 +194,34 @@ export default function Header() {
           </NavLink>
 
           {displayName && (
-            <NavLink
-              to="/stats"
-              className={({ isActive }) =>
-                isActive ? "text-white" : "hover:text-white"
-              }
-            >
-              Stats
-            </NavLink>
+            <>
+              <NavLink
+                to="/stats"
+                className={({ isActive }) =>
+                  isActive ? "text-white" : "hover:text-white"
+                }
+              >
+                Stats
+              </NavLink>
+
+              <NavLink
+                to="/leagues"
+                className={({ isActive }) =>
+                  isActive ? "text-white" : "hover:text-white"
+                }
+              >
+                Leagues
+              </NavLink>
+
+              <NavLink
+                to="/feed"
+                className={({ isActive }) =>
+                  isActive ? "text-white" : "hover:text-white"
+                }
+              >
+                Feed
+              </NavLink>
+            </>
           )}
         </nav>
       </div>

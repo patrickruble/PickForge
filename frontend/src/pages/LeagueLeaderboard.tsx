@@ -31,6 +31,11 @@ type MemberView = {
   avatar_url: string | null;
 };
 
+function formatStreak(type: "W" | "L" | null, len: number) {
+  if (!type || len === 0) return "—";
+  return `${type}${len}`;
+}
+
 export default function LeagueLeaderboard() {
   const { leagueId } = useParams<{ leagueId: string }>();
   const nav = useNavigate();
@@ -72,7 +77,7 @@ export default function LeagueLeaderboard() {
       setLoading(true);
       setErr(null);
 
-      // Load league (RLS: only members should see it)
+      // Load league (RLS should restrict to members)
       const { data: lg, error: lgErr } = await supabase
         .from("leagues")
         .select("id, name, invite_code, created_by")
@@ -160,29 +165,43 @@ export default function LeagueLeaderboard() {
   const rows = useMemo(() => {
     if (!members.length) return [];
 
-    return members
-      .map((m) => {
-        const s = statsByUser[m.user_id];
-        const total = s?.totalPicks ?? 0;
-        const winRate = s?.winRate ?? 0;
-        return {
-          ...m,
-          totalPicks: total,
-          winRate,
-          wins: s?.wins ?? 0,
-          losses: s?.losses ?? 0,
-          pushes: s?.pushes ?? 0,
-        };
-      })
-      .sort((a, b) => {
-        // people with no picks go to the bottom
-        if (a.totalPicks === 0 && b.totalPicks > 0) return 1;
-        if (b.totalPicks === 0 && a.totalPicks > 0) return -1;
+    const out = members.map((m) => {
+      const s = statsByUser[m.user_id];
+      const totalPicks = s?.totalPicks ?? 0;
+      const wins = s?.wins ?? 0;
+      const losses = s?.losses ?? 0;
+      const pushes = s?.pushes ?? 0;
+      const winRate =
+        totalPicks > 0 ? Number(s!.winRate.toFixed(1)) : 0.0;
+      const streakType = s?.currentStreakType ?? null;
+      const streakLen = s?.currentStreakLen ?? 0;
 
-        if (b.winRate !== a.winRate) return b.winRate - a.winRate;
-        if (b.wins !== a.wins) return b.wins - a.wins;
-        return a.username?.localeCompare(b.username ?? "") ?? 0;
-      });
+      return {
+        ...m,
+        totalPicks,
+        wins,
+        losses,
+        pushes,
+        winRate,
+        streakType,
+        streakLen,
+      };
+    });
+
+    // Sort: players with picks first, then by winRate desc, then wins desc
+    out.sort((a, b) => {
+      if (a.totalPicks === 0 && b.totalPicks > 0) return 1;
+      if (b.totalPicks === 0 && a.totalPicks > 0) return -1;
+
+      if (b.winRate !== a.winRate) return b.winRate - a.winRate;
+      if (b.wins !== a.wins) return b.wins - a.wins;
+
+      const nameA = a.username ?? "";
+      const nameB = b.username ?? "";
+      return nameA.localeCompare(nameB);
+    });
+
+    return out;
   }, [members, statsByUser]);
 
   const myRowIndex = useMemo(() => {
@@ -300,6 +319,9 @@ export default function LeagueLeaderboard() {
                 <th className="px-3 py-2 text-right">Record</th>
                 <th className="px-3 py-2 text-right">Win %</th>
                 <th className="px-3 py-2 text-right">Picks</th>
+                <th className="px-3 py-2 text-right hidden sm:table-cell">
+                  Streak
+                </th>
               </tr>
             </thead>
             <tbody>
@@ -313,10 +335,18 @@ export default function LeagueLeaderboard() {
                     : "0-0";
                 const winPct =
                   r.totalPicks > 0 ? `${r.winRate.toFixed(1)}%` : "—";
-                const display =
+                const name =
                   r.username && r.username.trim().length > 0
-                    ? r.username
+                    ? r.username.trim()
                     : `user_${r.user_id.slice(0, 6)}`;
+                const slug =
+                  r.username && r.username.trim().length > 0
+                    ? r.username.trim()
+                    : r.user_id;
+                const streakLabel =
+                  r.totalPicks > 0
+                    ? formatStreak(r.streakType, r.streakLen)
+                    : "—";
 
                 return (
                   <tr
@@ -335,19 +365,19 @@ export default function LeagueLeaderboard() {
                           {r.avatar_url ? (
                             <img
                               src={r.avatar_url}
-                              alt={display}
+                              alt={name}
                               className="w-full h-full object-cover"
                             />
                           ) : (
-                            display[0]?.toUpperCase()
+                            name[0]?.toUpperCase()
                           )}
                         </div>
                         <div className="flex flex-col">
                           <Link
-                            to={`/u/${display}`}
+                            to={`/u/${slug}`}
                             className="text-slate-100 hover:text-yellow-300 text-sm"
                           >
-                            {display}
+                            {name}
                           </Link>
                           <span className="text-[10px] text-slate-500 capitalize">
                             {r.role}
@@ -364,6 +394,9 @@ export default function LeagueLeaderboard() {
                     </td>
                     <td className="px-3 py-2 text-right text-slate-100">
                       {r.totalPicks}
+                    </td>
+                    <td className="px-3 py-2 text-right text-slate-300 hidden sm:table-cell">
+                      {streakLabel}
                     </td>
                   </tr>
                 );

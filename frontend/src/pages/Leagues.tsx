@@ -1,6 +1,6 @@
 // src/pages/Leagues.tsx
 import { useEffect, useState, FormEvent } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, Link } from "react-router-dom";
 import { supabase } from "../lib/supabase";
 
 type LeagueRow = {
@@ -422,7 +422,14 @@ export default function Leagues() {
                     </span>
                   </p>
                 </div>
-                {/* Future: button to view league leaderboard */}
+                <div className="flex items-center gap-2">
+                  <Link
+                    to={`/league/${lg.id}`}
+                    className="px-3 py-1.5 rounded-full text-[11px] bg-slate-900 border border-slate-600 hover:border-yellow-400 hover:text-yellow-300"
+                  >
+                    View leaderboard
+                  </Link>
+                </div>
               </li>
             ))}
           </ul>
