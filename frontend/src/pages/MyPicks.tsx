@@ -6,6 +6,15 @@ import { getNflWeekNumber } from "../hooks/useRemotePicks";
 import { useLines } from "../api/useLines";
 import TeamBadge from "../components/TeamBadge";
 
+type PickSnapshot = {
+  home?: string;
+  away?: string;
+  spreadHome?: number | null;
+  spreadAway?: number | null;
+  mlHome?: number | null;
+  mlAway?: number | null;
+};
+
 type PickRow = {
   game_id: string;
   side: "home" | "away";
@@ -14,7 +23,7 @@ type PickRow = {
   commence_at: string;
   picked_price_type?: "ml" | "spread" | null;
   picked_price?: number | null;
-  picked_snapshot?: any | null;
+  picked_snapshot?: PickSnapshot | null;
 };
 
 const fmtSigned = (n: number | null | undefined) =>
@@ -183,11 +192,14 @@ export default function MyPicks() {
       <ul className="space-y-3">
         {rows.map((r) => {
           const gm = gameMap.get(r.game_id);
-          const home = gm?.home ?? "HOME";
-          const away = gm?.away ?? "AWAY";
+          const snap = (r.picked_snapshot ?? {}) as PickSnapshot;
+
+          // Prefer live lines hook for names; fall back to snapshot; then placeholder
+          const home = gm?.home ?? snap.home ?? "HOME";
+          const away = gm?.away ?? snap.away ?? "AWAY";
           const when = new Date(r.commence_at).toLocaleString();
 
-          // Prefer saved price; else show current side’s line
+          // Prefer saved price; else show current side’s line; else snapshot
           let label = "";
           if (r.picked_price_type) {
             label =
@@ -211,6 +223,22 @@ export default function MyPicks() {
                   : "";
             }
             if (label) label += " (current line)";
+          } else if (snap) {
+            if (r.side === "home") {
+              label =
+                snap.spreadHome != null
+                  ? `Spread ${fmtSigned(snap.spreadHome)} (saved)`
+                  : snap.mlHome != null
+                  ? `ML ${fmtSigned(snap.mlHome)} (saved)`
+                  : "";
+            } else {
+              label =
+                snap.spreadAway != null
+                  ? `Spread ${fmtSigned(snap.spreadAway)} (saved)`
+                  : snap.mlAway != null
+                  ? `ML ${fmtSigned(snap.mlAway)} (saved)`
+                  : "";
+            }
           } else {
             label = "(resolving teams…)";
           }
@@ -255,9 +283,9 @@ export default function MyPicks() {
                 <div className="text-right min-w-[40%] sm:min-w-[32%]">
                   <div className="text-[11px] uppercase text-slate-400 mb-0.5">
                     You picked{" "}
-                    <span className="font-semibold text-slate-100">
-                      {pickedIsAway ? away : home}
-                    </span>
+                      <span className="font-semibold text-slate-100">
+                        {pickedIsAway ? away : home}
+                      </span>
                   </div>
                   {label && (
                     <div className="text-[11px] text-slate-400">{label}</div>
