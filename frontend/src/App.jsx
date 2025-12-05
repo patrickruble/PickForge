@@ -12,6 +12,7 @@ import Username from "./pages/Username";
 import AuthCallback from "./pages/AuthCallback";
 import UserProfile from "./pages/UserProfile";
 import ResetPassword from "./pages/ResetPassword";
+import Feed from "./pages/Feed"; 
 
 export default function App() {
   return (
@@ -29,6 +30,7 @@ export default function App() {
             <Route path="/username" element={<Username />} />
             <Route path="/reset-password" element={<ResetPassword />} /> {/* NEW */}
             <Route path="/auth/callback" element={<AuthCallback />} />
+            <Route path="/feed" element={<Feed />} />
             {/* use a generic slug so it can be either username or id */}
             <Route path="/u/:slug" element={<UserProfile />} />
           </Routes>
