@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { supabase } from "../lib/supabase";
+import { useAllUserStats } from "../hooks/useAllUserStats";
 import {
   getNflWeekNumber,
   currentNflWeekWindow,
@@ -81,6 +82,9 @@ export default function Leaderboard() {
   const [profilesMap, setProfilesMap] = useState<Record<string, ProfileInfo>>(
     {}
   );
+
+  // 🔹 Season-long stats for each user
+  const { statsByUser } = useAllUserStats();
 
   const weekWindow = useMemo(() => {
     const { weekStart, weekEnd } = currentNflWeekWindow(new Date());
@@ -343,10 +347,29 @@ export default function Leaderboard() {
               ? "border-amber-600/70"
               : "border-slate-700/60";
 
+          // Week stats (already computed)
           const recordText = `${item.wins}-${item.losses}${
             item.pushes ? `-${item.pushes}` : ""
           }`;
-          const winPctText = `${(item.winPct * 100).toFixed(1)}%`;
+          const weekWinPctText = `${(item.winPct * 100).toFixed(1)}%`;
+
+          // Season stats from useAllUserStats
+          const seasonStats = statsByUser[item.user_id];
+          const seasonRecordText = seasonStats
+            ? `${seasonStats.wins}-${seasonStats.losses}${
+                seasonStats.pushes ? `-${seasonStats.pushes}` : ""
+              }`
+            : "—";
+
+          const seasonWinPctText =
+            seasonStats && (seasonStats.wins + seasonStats.losses) > 0
+              ? `${seasonStats.winRate.toFixed(1)}%`
+              : "—";
+
+          const seasonStreakText =
+            seasonStats && seasonStats.currentStreakType
+              ? `${seasonStats.currentStreakType}${seasonStats.currentStreakLen}`
+              : "—";
 
           return (
             <li
@@ -382,7 +405,14 @@ export default function Leaderboard() {
                   {recordText}
                 </div>
                 <div className="text-[11px] sm:text-xs text-slate-400">
-                  Win {winPctText}
+                  Week Win {weekWinPctText}
+                </div>
+                <div className="text-[11px] sm:text-xs text-slate-500 mt-0.5">
+                  Season{" "}
+                  {seasonRecordText === "—"
+                    ? "—"
+                    : `${seasonRecordText} · ${seasonWinPctText}`}{" "}
+                  · Streak {seasonStreakText}
                 </div>
               </div>
             </li>
@@ -391,9 +421,9 @@ export default function Leaderboard() {
       </ol>
 
       <p className="text-[11px] text-slate-500 mt-4">
-        Records are graded using final scores from the games table and your
-        saved spread/ML at pick time. Later we can automate the results import
-        from an API instead of entering scores by hand.
+        Week records are graded using final scores from the games table and your
+        saved spread/ML at pick time. Season stats combine all finished games
+        across the year.
       </p>
     </section>
   );
