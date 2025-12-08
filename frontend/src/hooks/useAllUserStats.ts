@@ -12,6 +12,7 @@ type PickRow = {
   side: "home" | "away";
   picked_price_type: "ml" | "spread" | null;
   picked_price: number | null;
+  commence_at: string; // kickoff timestamp for ordering
 };
 
 type GameRow = {
@@ -83,17 +84,17 @@ export function useAllUserStats(): {
       setError(null);
 
       try {
-        // 1) Fetch all NFL picks
+        // 1) Fetch all NFL picks, including commence_at so we can sort by time
         const { data: picksRaw, error: picksError } = await supabase
           .from("picks")
           .select(
-            "user_id, game_id, league, week, side, picked_price_type, picked_price"
+            "user_id, game_id, league, week, side, picked_price_type, picked_price, commence_at"
           )
           .eq("league", "nfl");
 
         if (picksError) throw picksError;
 
-        const picks = (picksRaw ?? []) as PickRow[];
+        let picks = (picksRaw ?? []) as PickRow[];
 
         if (!picks.length) {
           if (!cancelled) {
@@ -103,7 +104,14 @@ export function useAllUserStats(): {
           return;
         }
 
-        // 2) Fetch games used in those picks
+        // 2) Sort picks chronologically by kickoff time
+        picks = picks.slice().sort((a, b) => {
+          const ta = new Date(a.commence_at).getTime();
+          const tb = new Date(b.commence_at).getTime();
+          return ta - tb;
+        });
+
+        // 3) Fetch games used in those picks
         const gameIds = Array.from(new Set(picks.map((p) => p.game_id)));
 
         const { data: gamesRaw, error: gamesError } = await supabase
@@ -117,7 +125,7 @@ export function useAllUserStats(): {
         const gameMap = new Map<string, GameRow>();
         for (const g of games) gameMap.set(g.id, g);
 
-        // 3) Aggregate by user
+        // 4) Aggregate by user in chronological order
         const perUserResults = new Map<string, ("W" | "L" | "P")[]>();
         const byUser: StatsByUser = {};
 
@@ -165,18 +173,23 @@ export function useAllUserStats(): {
           s.winRate = safePct(s.wins, s.wins + s.losses) * 100;
         }
 
-        // 4) Compute current streak per user (pushes don't break it)
+        // 5) Compute current streak per user from most recent graded pick backwards
         for (const [userId, resArr] of perUserResults.entries()) {
           let type: "W" | "L" | null = null;
           let len = 0;
 
-          for (const r of resArr) {
-            if (r === "P") continue;
-            if (!type || type !== r) {
+          for (let i = resArr.length - 1; i >= 0; i--) {
+            const r = resArr[i];
+            if (r === "P") continue; // pushes don't affect streak
+
+            if (!type) {
               type = r;
               len = 1;
-            } else {
+            } else if (r === type) {
               len++;
+            } else {
+              // hit a different result → streak ends
+              break;
             }
           }
 
