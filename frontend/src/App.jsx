@@ -14,6 +14,7 @@ import ResetPassword from "./pages/ResetPassword";
 import Feed from "./pages/Feed";
 import Leagues from "./pages/Leagues";
 import LeagueLeaderboard from "./pages/LeagueLeaderboard";
+import MyBets from "./pages/MyBets";
 
 export default function App() {
   return (
@@ -34,6 +35,7 @@ export default function App() {
             <Route path="/feed" element={<Feed />} />
             <Route path="/leagues" element={<Leagues />} />
             <Route path="/league/:leagueId" element={<LeagueLeaderboard />} />
+            <Route path="/bets" element={<MyBets />} />
             {/* use a generic slug so it can be either username or id */}
             <Route path="/u/:slug" element={<UserProfile />} />
           </Routes>

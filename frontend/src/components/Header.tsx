@@ -221,6 +221,15 @@ export default function Header() {
               >
                 Feed
               </NavLink>
+
+              <NavLink
+  to="/bets"
+  className={({ isActive }) =>
+    isActive ? "text-white" : "hover:text-white"
+  }
+>
+  Bet Tracker
+</NavLink>
             </>
           )}
         </nav>
