@@ -7,6 +7,7 @@ import {
   getNflWeekNumber,
   currentNflWeekWindow,
 } from "../hooks/useRemotePicks";
+import { usePageSeo } from "../hooks/usePageSeo"; // ← NEW
 
 type League = "nfl" | "ncaaf";
 
@@ -78,6 +79,14 @@ function gradePick(row: PickWithGame): Grade {
 
 export default function Leaderboard() {
   const week = useMemo(() => getNflWeekNumber(new Date()), []);
+
+  // SEO for leaderboard page
+  usePageSeo({
+    title: `PickForge — NFL Week ${week} Pick’em Leaderboard & Season Standings`,
+    description:
+      "Check the PickForge NFL pick’em leaderboard for this week and the full season. Track wins, losses, pushes, and win rate for every player.",
+  });
+
   const [rows, setRows] = useState<PickWithGame[]>([]);
   const [loading, setLoading] = useState(true);
 

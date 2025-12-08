@@ -3,6 +3,7 @@ import { useEffect, useMemo, useState } from "react";
 import { supabase } from "../lib/supabase";
 import type { BetRow, BetStatus } from "../types/bets";
 import { calcToWin, calcResultAmount } from "../lib/betMath";
+import { usePageSeo } from "../hooks/usePageSeo"; // ✅ SEO hook
 
 type NewBetForm = {
   sport: string;
@@ -33,6 +34,13 @@ function getPrimaryDate(b: BetRow): Date | null {
 }
 
 export default function MyBets() {
+  // ✅ SEO for Bet Tracker page
+  usePageSeo({
+    title: "Bet Tracker — Track Your Sports Bets & ROI | PickForge",
+    description:
+      "Use the PickForge bet tracker to log NFL, NBA, NCAAF and other sports bets, see your record, profit/loss, and ROI over time.",
+  });
+
   const [userId, setUserId] = useState<string | null>(null);
   const [bets, setBets] = useState<BetRow[]>([]);
   const [loading, setLoading] = useState(true);
@@ -346,7 +354,8 @@ export default function MyBets() {
           Bet Tracker
         </h1>
         <p className="text-sm text-slate-400">
-          Sign in to track your bets and see your record.
+          Sign in to use the PickForge bet tracker, log your sports bets, and
+          see your real record and ROI.
         </p>
       </div>
     );
@@ -363,7 +372,8 @@ export default function MyBets() {
             Bet Tracker
           </h1>
           <p className="text-xs sm:text-sm text-slate-400 mt-1">
-            Log your bets across any sport and see your record and profit/loss.
+            Log your NFL, NCAAF, NBA and other sports bets, and track your
+            betting record, profit/loss and ROI over time.
           </p>
           {totalCount > 0 && (
             <p className="text-[11px] text-slate-500 mt-1">

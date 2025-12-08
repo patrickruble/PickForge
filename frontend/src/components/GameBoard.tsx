@@ -3,6 +3,7 @@ import { useLines } from "../api/useLines";
 import { useRemotePicks, getNflWeekNumber } from "../hooks/useRemotePicks";
 import useNow from "../hooks/useNow";
 import TeamBadge from "../components/TeamBadge";
+import { usePageSeo } from "../hooks/usePageSeo";
 
 /* -----------------------
    Utility / formatting
@@ -89,10 +90,18 @@ const SECTION_ORDER = [
 --------------------------*/
 
 export default function GameBoard() {
+  // SEO for the “home” page
+  usePageSeo({
+    title: "PickForge — Free NFL Pick’em, Weekly Picks & Leaderboard",
+    description:
+      "Free NFL pick’em game. Make weekly NFL picks against the spread and moneyline, track your record and ROI, and compete on the PickForge leaderboard.",
+  });
+
   const { games, isLoading, isValidating, error, refresh } = useLines("nfl");
 
   // Supabase picks – togglePick(game, side)
-  const { picks, count, togglePick, clear, isLocked, isAuthed } = useRemotePicks();
+  const { picks, count, togglePick, clear, isLocked, isAuthed } =
+    useRemotePicks();
 
   // Ticker for countdowns
   const now = useNow(30_000);
@@ -110,9 +119,9 @@ export default function GameBoard() {
       <div className="max-w-4xl mx-auto px-4 py-6 space-y-4">
         <div className="flex items-center justify-between">
           <div>
-            <h2 className="text-2xl sm:text-3xl font-semibold">
+            <h1 className="text-2xl sm:text-3xl font-semibold">
               NFL Lines — <span className="text-yellow-400">Loading…</span>
-            </h2>
+            </h1>
             <p className="text-xs sm:text-sm text-slate-400 mt-1">
               Weekly spread and moneyline board.
             </p>
@@ -137,12 +146,12 @@ export default function GameBoard() {
   if (!games.length) {
     return (
       <div className="max-w-4xl mx-auto px-4 py-6 text-sm text-slate-300">
-        <h2 className="text-2xl sm:text-3xl font-semibold mb-2">
+        <h1 className="text-2xl sm:text-3xl font-semibold mb-2">
           NFL Lines —{" "}
           <span className="text-yellow-400">
             Week {getNflWeekNumber(new Date())}
           </span>
-        </h2>
+        </h1>
         <p>No games are currently posted for this week.</p>
       </div>
     );
@@ -182,10 +191,10 @@ export default function GameBoard() {
       {/* Header */}
       <div className="flex items-start justify-between gap-3 mb-3 sm:mb-4">
         <div>
-          <h2 className="text-2xl sm:text-3xl font-semibold tracking-tight">
+          <h1 className="text-2xl sm:text-3xl font-semibold tracking-tight">
             Weekly Picks —{" "}
             <span className="text-yellow-400">NFL Week {week}</span>
-          </h2>
+          </h1>
           <p className="text-xs sm:text-sm text-slate-400 mt-1">
             Tap a side to lock in your pick. Games lock at kickoff.
           </p>
