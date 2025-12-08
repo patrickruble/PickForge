@@ -1,12 +1,17 @@
 // src/pages/Feed.tsx
-import { useEffect, useState } from "react";
-import { Link } from "react-router-dom";   // 👈 add this
+import { useEffect, useState, useMemo } from "react";
+import { Link } from "react-router-dom";
 import { supabase } from "../lib/supabase";
 import { getNflWeekNumber } from "../hooks/useRemotePicks";
 
 type FollowRow = {
   follower_id: string;
   following_id: string;
+};
+
+type LeagueMemberRow = {
+  league_id: string;
+  user_id: string;
 };
 
 type PickSnapshot = {
@@ -36,13 +41,24 @@ type BasicProfile = {
   avatar_url: string | null;
 };
 
+type Scope = "everyone" | "following" | "leagues";
+type WindowMode = "week" | "season";
+
 const fmtSigned = (n: number | null | undefined) =>
   typeof n === "number" ? (n > 0 ? `+${n}` : `${n}`) : "—";
 
 export default function Feed() {
   const [uid, setUid] = useState<string | null>(null);
-  const [following, setFollowing] = useState<BasicProfile[]>([]);
+
+  // Filters
+  const [scope, setScope] = useState<Scope>("following");
+  const [windowMode, setWindowMode] = useState<WindowMode>("week");
+
+  // Data
+  const [people, setPeople] = useState<BasicProfile[]>([]);
   const [picks, setPicks] = useState<FeedPickRow[]>([]);
+
+  // Status
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -68,12 +84,15 @@ export default function Feed() {
     };
   }, []);
 
-  // 2) Load following list + their picks (only games that have started)
+  // 2) Load feed based on scope + window
   useEffect(() => {
     if (!uid) {
       setLoading(false);
+      setPeople([]);
+      setPicks([]);
       return;
     }
+
     let cancelled = false;
 
     async function loadFeed() {
@@ -81,69 +100,171 @@ export default function Feed() {
       setError(null);
 
       try {
-        // --- A) Who do I follow? ---
-        const { data: followRows, error: followError } = await supabase
-          .from("follows")
-          .select("follower_id, following_id")
-          .eq("follower_id", uid);
-
-        if (followError) {
-          console.error("[Feed] follows error:", followError);
-          if (!cancelled) setError("Could not load who you follow.");
-          return;
-        }
-
-        const rows = (followRows ?? []) as FollowRow[];
-        const followingIds = Array.from(
-          new Set(rows.map((r) => r.following_id))
-        );
-
-        if (!followingIds.length) {
-          if (!cancelled) {
-            setFollowing([]);
-            setPicks([]);
-          }
-          return;
-        }
-
-        // --- B) Load basic profiles for those users ---
-        const { data: profiles, error: profilesError } = await supabase
-          .from("profiles")
-          .select("id, username, avatar_url")
-          .in("id", followingIds);
-
-        if (profilesError) {
-          console.error("[Feed] profiles error:", profilesError);
-        }
-
-        const followingProfiles = (profiles ?? []) as BasicProfile[];
-
-        if (!cancelled) {
-          setFollowing(followingProfiles);
-        }
-
-        // --- C) Load their picks for this week, ONLY after game starts ---
         const nowIso = new Date().toISOString();
 
-        const { data: picksData, error: picksError } = await supabase
+        let userIds: string[] | null = null;
+        let scopedProfiles: BasicProfile[] = [];
+
+        // ----- A) Figure out which users we care about, per scope -----
+        if (scope === "following") {
+          // Who do I follow?
+          const { data: followRows, error: followError } = await supabase
+            .from("follows")
+            .select("follower_id, following_id")
+            .eq("follower_id", uid);
+
+          if (followError) {
+            console.error("[Feed] follows error:", followError);
+            if (!cancelled)
+              setError("Could not load who you follow for the feed.");
+            return;
+          }
+
+          const rows = (followRows ?? []) as FollowRow[];
+          userIds = Array.from(new Set(rows.map((r) => r.following_id)));
+
+          if (!userIds.length) {
+            if (!cancelled) {
+              setPeople([]);
+              setPicks([]);
+            }
+            return;
+          }
+
+          // Load their profiles
+          const { data: profiles, error: profilesError } = await supabase
+            .from("profiles")
+            .select("id, username, avatar_url")
+            .in("id", userIds);
+
+          if (profilesError) {
+            console.error("[Feed] profiles error:", profilesError);
+          }
+
+          scopedProfiles = (profiles ?? []) as BasicProfile[];
+        } else if (scope === "leagues") {
+          // Find leagues I'm in
+          const { data: myLeagueRows, error: myLeagueError } = await supabase
+            .from("league_members")
+            .select("league_id")
+            .eq("user_id", uid);
+
+          if (myLeagueError) {
+            console.error("[Feed] my leagues error:", myLeagueError);
+            if (!cancelled)
+              setError("Could not load your leagues for the feed.");
+            return;
+          }
+
+          const leagueIds = Array.from(
+            new Set((myLeagueRows ?? []).map((r: any) => r.league_id as string))
+          );
+
+          if (!leagueIds.length) {
+            if (!cancelled) {
+              setPeople([]);
+              setPicks([]);
+            }
+            return;
+          }
+
+          // Everyone in those leagues
+          const { data: leagueMemberRows, error: leagueMembersError } =
+            await supabase
+              .from("league_members")
+              .select("league_id, user_id")
+              .in("league_id", leagueIds);
+
+          if (leagueMembersError) {
+            console.error(
+              "[Feed] league members error:",
+              leagueMembersError
+            );
+            if (!cancelled)
+              setError("Could not load league members for the feed.");
+            return;
+          }
+
+          const lmRows = (leagueMemberRows ?? []) as LeagueMemberRow[];
+          userIds = Array.from(
+            new Set(lmRows.map((r) => r.user_id).filter(Boolean))
+          );
+
+          if (!userIds.length) {
+            if (!cancelled) {
+              setPeople([]);
+              setPicks([]);
+            }
+            return;
+          }
+
+          // Load profiles for league-mates
+          const { data: profiles, error: profilesError } = await supabase
+            .from("profiles")
+            .select("id, username, avatar_url")
+            .in("id", userIds);
+
+          if (profilesError) {
+            console.error("[Feed] league profiles error:", profilesError);
+          }
+
+          scopedProfiles = (profiles ?? []) as BasicProfile[];
+        } else {
+          // scope === "everyone"
+          // userIds stays null; we'll fetch profiles based on picks later.
+          userIds = null;
+          scopedProfiles = [];
+        }
+
+        // ----- B) Load picks for this scope + window -----
+        let query = supabase
           .from("picks")
           .select(
             "user_id, game_id, side, league, week, commence_at, picked_price_type, picked_price, picked_snapshot"
           )
-          .in("user_id", followingIds)
           .eq("league", "nfl")
-          .eq("week", weekNum)
           .lte("commence_at", nowIso) // only games that have started
           .order("commence_at", { ascending: false });
 
+        if (windowMode === "week") {
+          query = query.eq("week", weekNum);
+        }
+
+        if (userIds && userIds.length) {
+          query = query.in("user_id", userIds);
+        }
+
+        const { data: picksData, error: picksError } = await query;
+
         if (picksError) {
           console.error("[Feed] picks error:", picksError);
-          if (!cancelled) setError("Could not load followers’ picks.");
+          if (!cancelled)
+            setError("Could not load picks for the current filters.");
           return;
         }
 
+        const pickedRows = (picksData ?? []) as FeedPickRow[];
+
+        // For "everyone" scope, we still need profiles, but based on who appears in picks.
+        if (scope === "everyone" && pickedRows.length) {
+          const distinctUserIds = Array.from(
+            new Set(pickedRows.map((p) => p.user_id))
+          );
+          const { data: profiles, error: profilesError } = await supabase
+            .from("profiles")
+            .select("id, username, avatar_url")
+            .in("id", distinctUserIds);
+
+          if (profilesError) {
+            console.error("[Feed] everyone profiles error:", profilesError);
+          }
+
+          scopedProfiles = (profiles ?? []) as BasicProfile[];
+        }
+
         if (!cancelled) {
-          setPicks((picksData ?? []) as FeedPickRow[]);
+          setPeople(scopedProfiles);
+          setPicks(pickedRows);
         }
       } finally {
         if (!cancelled) setLoading(false);
@@ -155,13 +276,24 @@ export default function Feed() {
     return () => {
       cancelled = true;
     };
-  }, [uid, weekNum]);
+  }, [uid, weekNum, scope, windowMode]);
 
   // Helper: map user id -> profile
-  const profileById = new Map<string, BasicProfile>();
-  for (const p of following) {
-    profileById.set(p.id, p);
-  }
+  const profileById = useMemo(() => {
+    const map = new Map<string, BasicProfile>();
+    for (const p of people) {
+      map.set(p.id, p);
+    }
+    return map;
+  }, [people]);
+
+  const scopeLabel = (() => {
+    if (scope === "following") return "Following";
+    if (scope === "leagues") return "My Leagues";
+    return "Everyone";
+  })();
+
+  const windowLabel = windowMode === "week" ? `Week ${weekNum}` : "All Season";
 
   // ---------- UI STATES ----------
 
@@ -169,10 +301,11 @@ export default function Feed() {
     return (
       <div className="max-w-4xl mx-auto px-4 py-10 text-slate-200">
         <h1 className="text-2xl sm:text-3xl font-semibold text-yellow-400 mb-2">
-          Friends’ Picks
+          Pick Feed
         </h1>
         <p className="text-sm text-slate-400">
-          Sign in to see picks from people you follow.
+          Sign in to see picks from everyone, people you follow, and your
+          private leagues.
         </p>
       </div>
     );
@@ -181,12 +314,23 @@ export default function Feed() {
   if (loading) {
     return (
       <div className="max-w-4xl mx-auto px-4 py-10 text-slate-200">
-        <h1 className="text-2xl sm:text-3xl font-semibold text-yellow-400 mb-2">
-          Friends’ Picks — Week {weekNum}
-        </h1>
-        <p className="text-sm text-slate-400 mb-4">
-          Loading picks from people you follow…
-        </p>
+        <header className="mb-4 sm:mb-5 flex flex-col sm:flex-row sm:items-end sm:justify-between gap-2">
+          <div>
+            <h1 className="text-2xl sm:text-3xl font-semibold text-yellow-400">
+              Pick Feed — {windowLabel}
+            </h1>
+            <p className="text-xs sm:text-sm text-slate-400 mt-1">
+              Live pick stream ({scopeLabel}). Picks only appear after kickoff.
+            </p>
+          </div>
+          <FeedFilters
+            scope={scope}
+            setScope={setScope}
+            windowMode={windowMode}
+            setWindowMode={setWindowMode}
+          />
+        </header>
+
         <div className="space-y-2">
           {[0, 1, 2].map((i) => (
             <div
@@ -202,62 +346,107 @@ export default function Feed() {
   if (error) {
     return (
       <div className="max-w-4xl mx-auto px-4 py-10 text-slate-200">
-        <h1 className="text-2xl sm:text-3xl font-semibold text-yellow-400 mb-2">
-          Friends’ Picks — Week {weekNum}
-        </h1>
+        <header className="mb-3 flex flex-col sm:flex-row sm:items-end sm:justify-between gap-2">
+          <div>
+            <h1 className="text-2xl sm:text-3xl font-semibold text-yellow-400">
+              Pick Feed — {windowLabel}
+            </h1>
+            <p className="text-xs sm:text-sm text-slate-400 mt-1">
+              Live pick stream ({scopeLabel}).
+            </p>
+          </div>
+          <FeedFilters
+            scope={scope}
+            setScope={setScope}
+            windowMode={windowMode}
+            setWindowMode={setWindowMode}
+          />
+        </header>
         <p className="text-sm text-rose-400">{error}</p>
       </div>
     );
   }
 
-  if (!following.length) {
-    return (
-      <div className="max-w-4xl mx-auto px-4 py-10 text-slate-200">
-        <h1 className="text-2xl sm:text-3xl font-semibold text-yellow-400 mb-2">
-          Friends’ Picks — Week {weekNum}
-        </h1>
-        <p className="text-sm text-slate-400 mb-2">
-          You’re not following anyone yet.
-        </p>
-        <p className="text-sm text-slate-400">
-          Head to the{" "}
-          <Link to="/leaderboard" className="text-yellow-400 underline">
-            leaderboard
-          </Link>{" "}
-          and start following players you want to track.
-        </p>
-      </div>
-    );
-  }
-
   if (!picks.length) {
+    const emptyTextByScope: Record<Scope, string> = {
+      following:
+        "None of the people you follow have graded picks for this window yet.",
+      leagues:
+        "No league-mates have graded picks for this window yet, or you are not in any leagues.",
+      everyone:
+        "No graded picks match this window. Try switching to This Week or Following.",
+    };
+
     return (
       <div className="max-w-4xl mx-auto px-4 py-10 text-slate-200">
-        <h1 className="text-2xl sm:text-3xl font-semibold text-yellow-400 mb-2">
-          Friends’ Picks — Week {weekNum}
-        </h1>
-        <p className="text-sm text-slate-400">
-          None of the people you follow have started games yet this week, or
-          their games haven’t kicked off. Picks appear here after kickoff only.
+        <header className="mb-3 flex flex-col sm:flex-row sm:items-end sm:justify-between gap-2">
+          <div>
+            <h1 className="text-2xl sm:text-3xl font-semibold text-yellow-400">
+              Pick Feed — {windowLabel}
+            </h1>
+            <p className="text-xs sm:text-sm text-slate-400 mt-1">
+              Live pick stream ({scopeLabel}). Picks only appear after kickoff.
+            </p>
+          </div>
+          <FeedFilters
+            scope={scope}
+            setScope={setScope}
+            windowMode={windowMode}
+            setWindowMode={setWindowMode}
+          />
+        </header>
+
+        <p className="text-sm text-slate-400 mb-2">
+          {emptyTextByScope[scope]}
         </p>
+
+        {scope === "following" && (
+          <p className="text-sm text-slate-400">
+            Head to the{" "}
+            <Link to="/leaderboard" className="text-yellow-400 underline">
+              leaderboard
+            </Link>{" "}
+            to find players and follow them.
+          </p>
+        )}
+
+        {scope === "leagues" && (
+          <p className="text-sm text-slate-400">
+            You can create or join private leagues on the{" "}
+            <Link to="/leagues" className="text-yellow-400 underline">
+              Leagues
+            </Link>{" "}
+            page.
+          </p>
+        )}
       </div>
     );
   }
 
   return (
     <div className="max-w-4xl mx-auto px-4 py-10 text-slate-200">
-      <header className="mb-4 sm:mb-5 flex flex-col sm:flex-row sm:items-end sm:justify-between gap-2">
+      <header className="mb-4 sm:mb-5 flex flex-col sm:flex-row sm:items-end sm:justify-between gap-3">
         <div>
           <h1 className="text-2xl sm:text-3xl font-semibold text-yellow-400">
-            Friends’ Picks — Week {weekNum}
+            Pick Feed — {windowLabel}
           </h1>
           <p className="text-xs sm:text-sm text-slate-400 mt-1">
-            Picks from people you follow. Only visible after the game starts.
+            Live pick stream ({scopeLabel}). Picks only appear after kickoff.
           </p>
         </div>
-        <div className="text-[11px] sm:text-xs text-slate-400">
-          <span className="font-semibold text-slate-100">{picks.length}</span>{" "}
-          picks shown.
+        <div className="flex flex-col items-end gap-2">
+          <FeedFilters
+            scope={scope}
+            setScope={setScope}
+            windowMode={windowMode}
+            setWindowMode={setWindowMode}
+          />
+          <div className="text-[11px] sm:text-xs text-slate-400">
+            <span className="font-semibold text-slate-100">
+              {picks.length}
+            </span>{" "}
+            picks shown.
+          </div>
         </div>
       </header>
 
@@ -312,7 +501,7 @@ export default function Feed() {
                       {prof?.username ?? `user_${p.user_id.slice(0, 6)}`}
                     </span>
                     <span className="text-[11px] text-slate-500">
-                      Game kicks off {when}
+                      Game kicked off {when}
                     </span>
                   </div>
                 </Link>
@@ -321,13 +510,13 @@ export default function Feed() {
                 <div className="text-right text-[11px] sm:text-xs text-slate-300">
                   <div className="mb-0.5">
                     Picked{" "}
-                    <span className="font-semibold text-yellow-300">
-                      {pickedTeam}
-                    </span>
+                      <span className="font-semibold text-yellow-300">
+                        {pickedTeam}
+                      </span>
                   </div>
                   <div className="text-slate-400">{lineLabel}</div>
                   <div className="text-slate-500 mt-1 text-[10px]">
-                    {away} @ {home}
+                    NFL • Week {p.week} • {away} @ {home}
                   </div>
                 </div>
               </div>
@@ -335,6 +524,74 @@ export default function Feed() {
           );
         })}
       </ul>
+    </div>
+  );
+}
+
+// Small subcomponent for the filter pills
+type FeedFiltersProps = {
+  scope: Scope;
+  setScope: (s: Scope) => void;
+  windowMode: WindowMode;
+  setWindowMode: (w: WindowMode) => void;
+};
+
+function FeedFilters({
+  scope,
+  setScope,
+  windowMode,
+  setWindowMode,
+}: FeedFiltersProps) {
+  return (
+    <div className="flex flex-wrap gap-2 justify-end">
+      <div className="inline-flex rounded-full bg-slate-900/80 border border-slate-700 p-1 text-[11px] sm:text-xs">
+        {[
+          { key: "everyone", label: "Everyone" },
+          { key: "following", label: "Following" },
+          { key: "leagues", label: "My Leagues" },
+        ].map((opt) => {
+          const active = scope === opt.key;
+          return (
+            <button
+              key={opt.key}
+              type="button"
+              onClick={() => setScope(opt.key as Scope)}
+              className={
+                "px-2.5 py-1 rounded-full transition " +
+                (active
+                  ? "bg-yellow-400 text-slate-900 font-semibold"
+                  : "text-slate-300 hover:text-slate-100")
+              }
+            >
+              {opt.label}
+            </button>
+          );
+        })}
+      </div>
+
+      <div className="inline-flex rounded-full bg-slate-900/80 border border-slate-700 p-1 text-[11px] sm:text-xs">
+        {[
+          { key: "week", label: "This Week" },
+          { key: "season", label: "All Season" },
+        ].map((opt) => {
+          const active = windowMode === opt.key;
+          return (
+            <button
+              key={opt.key}
+              type="button"
+              onClick={() => setWindowMode(opt.key as WindowMode)}
+              className={
+                "px-2.5 py-1 rounded-full transition " +
+                (active
+                  ? "bg-slate-100 text-slate-900 font-semibold"
+                  : "text-slate-300 hover:text-slate-100")
+              }
+            >
+              {opt.label}
+            </button>
+          );
+        })}
+      </div>
     </div>
   );
 }
