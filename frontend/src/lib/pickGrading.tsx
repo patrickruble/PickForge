@@ -32,11 +32,29 @@ export type PickWithGame = PickRow & {
 export type Grade = "pending" | "win" | "loss" | "push";
 
 // ----------------------------------------------------------
+// helper: isFinalStatus
+// ----------------------------------------------------------
+function isFinalStatus(status: string | null | undefined): boolean {
+  if (!status) return false;
+  const s = status.toLowerCase();
+
+  // very common variants
+  if (s === "final") return true;
+  if (s === "finished" || s === "complete" || s === "completed") return true;
+  if (s === "closed" || s === "ended") return true;
+
+  // things like "final_ot", "final overtime", etc.
+  if (s.startsWith("final")) return true;
+
+  return false;
+}
+
+// ----------------------------------------------------------
 // gradePick
 // ----------------------------------------------------------
 export function gradePick(row: PickWithGame): Grade {
   const game = row.game;
-  if (!game || game.status !== "final") return "pending";
+  if (!game || !isFinalStatus(game.status)) return "pending";
 
   const home = game.home_score ?? null;
   const away = game.away_score ?? null;
