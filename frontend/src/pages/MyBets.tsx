@@ -15,6 +15,23 @@ type NewBetForm = {
   stake: string;
 };
 
+type TimeFilter = "all" | "7d" | "30d" | "ytd";
+type SortKey = "created" | "stake" | "result";
+type SortDir = "asc" | "desc";
+
+function getPrimaryDate(b: BetRow): Date | null {
+  // Prefer event_date if present, otherwise created_at
+  if (b.event_date) {
+    const d = new Date(b.event_date);
+    if (!Number.isNaN(d.getTime())) return d;
+  }
+  if (b.created_at) {
+    const d = new Date(b.created_at);
+    if (!Number.isNaN(d.getTime())) return d;
+  }
+  return null;
+}
+
 export default function MyBets() {
   const [userId, setUserId] = useState<string | null>(null);
   const [bets, setBets] = useState<BetRow[]>([]);
@@ -32,6 +49,13 @@ export default function MyBets() {
     odds_american: "",
     stake: "",
   });
+
+  // Filters + sorting
+  const [filterSport, setFilterSport] = useState<string>("all");
+  const [filterStatus, setFilterStatus] = useState<BetStatus | "all">("all");
+  const [filterTime, setFilterTime] = useState<TimeFilter>("all");
+  const [sortKey, setSortKey] = useState<SortKey>("created");
+  const [sortDir, setSortDir] = useState<SortDir>("desc");
 
   // 1) Load current user
   useEffect(() => {
@@ -94,9 +118,70 @@ export default function MyBets() {
     };
   }, [userId]);
 
-  // 3) Derived stats
+  // 3) Filter + sort
+  const filteredAndSortedBets = useMemo(() => {
+    if (!bets.length) return [] as BetRow[];
+
+    let result = [...bets];
+
+    // Filter by sport
+    if (filterSport !== "all") {
+      result = result.filter((b) => b.sport === filterSport);
+    }
+
+    // Filter by status
+    if (filterStatus !== "all") {
+      result = result.filter((b) => b.status === filterStatus);
+    }
+
+    // Filter by time window
+    if (filterTime !== "all") {
+      const now = new Date();
+      let cutoff: Date | null = null;
+
+      if (filterTime === "7d") {
+        cutoff = new Date(now);
+        cutoff.setDate(cutoff.getDate() - 7);
+      } else if (filterTime === "30d") {
+        cutoff = new Date(now);
+        cutoff.setDate(cutoff.getDate() - 30);
+      } else if (filterTime === "ytd") {
+        cutoff = new Date(now.getFullYear(), 0, 1);
+      }
+
+      if (cutoff) {
+        const cutoffMs = cutoff.getTime();
+        result = result.filter((b) => {
+          const d = getPrimaryDate(b);
+          if (!d) return true; // keep if we do not know
+          return d.getTime() >= cutoffMs;
+        });
+      }
+    }
+
+    // Sort
+    result.sort((a, b) => {
+      let cmp = 0;
+
+      if (sortKey === "created") {
+        const da = getPrimaryDate(a)?.getTime() ?? 0;
+        const db = getPrimaryDate(b)?.getTime() ?? 0;
+        cmp = da - db;
+      } else if (sortKey === "stake") {
+        cmp = a.stake - b.stake;
+      } else if (sortKey === "result") {
+        cmp = a.result_amount - b.result_amount;
+      }
+
+      return sortDir === "asc" ? cmp : -cmp;
+    });
+
+    return result;
+  }, [bets, filterSport, filterStatus, filterTime, sortKey, sortDir]);
+
+  // 4) Derived stats (based on visible bets, not all-time)
   const summary = useMemo(() => {
-    if (!bets.length) {
+    if (!filteredAndSortedBets.length) {
       return {
         total: 0,
         wins: 0,
@@ -114,7 +199,7 @@ export default function MyBets() {
     let net = 0;
     let staked = 0;
 
-    for (const b of bets) {
+    for (const b of filteredAndSortedBets) {
       staked += b.stake;
       net += b.result_amount;
 
@@ -135,9 +220,9 @@ export default function MyBets() {
       staked: +staked.toFixed(2),
       roi: +roi.toFixed(2),
     };
-  }, [bets]);
+  }, [filteredAndSortedBets]);
 
-  // 4) Form handlers
+  // 5) Form handlers
   function updateField<K extends keyof NewBetForm>(key: K, value: string) {
     setForm((prev) => ({ ...prev, [key]: value }));
   }
@@ -226,7 +311,9 @@ export default function MyBets() {
     // optimistic update
     setBets((prev) =>
       prev.map((b) =>
-        b.id === bet.id ? { ...b, status: newStatus, result_amount: newResult } : b
+        b.id === bet.id
+          ? { ...b, status: newStatus, result_amount: newResult }
+          : b
       )
     );
 
@@ -250,7 +337,7 @@ export default function MyBets() {
     }
   }
 
-  // 5) UI
+  // 6) UI
 
   if (!userId) {
     return (
@@ -265,6 +352,9 @@ export default function MyBets() {
     );
   }
 
+  const visibleCount = filteredAndSortedBets.length;
+  const totalCount = bets.length;
+
   return (
     <div className="max-w-5xl mx-auto px-4 py-8 text-slate-200">
       <header className="mb-6 flex flex-col sm:flex-row sm:items-end sm:justify-between gap-4">
@@ -275,6 +365,17 @@ export default function MyBets() {
           <p className="text-xs sm:text-sm text-slate-400 mt-1">
             Log your bets across any sport and see your record and profit/loss.
           </p>
+          {totalCount > 0 && (
+            <p className="text-[11px] text-slate-500 mt-1">
+              Showing {visibleCount} of {totalCount} bets
+              {filterSport !== "all" ||
+              filterStatus !== "all" ||
+              filterTime !== "all"
+                ? " (filtered)"
+                : ""}
+              .
+            </p>
+          )}
         </div>
 
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs sm:text-sm">
@@ -322,6 +423,118 @@ export default function MyBets() {
         </div>
       </header>
 
+      {/* Filters */}
+      <section className="mb-4 bg-slate-950/80 border border-slate-800 rounded-2xl p-3 sm:p-4">
+        <div className="flex flex-wrap gap-3 items-center text-xs sm:text-sm">
+          <div className="flex flex-col gap-1">
+            <label
+              htmlFor="filter-sport"
+              className="text-[10px] uppercase tracking-wide text-slate-500"
+            >
+              Sport
+            </label>
+            <select
+              id="filter-sport"
+              aria-label="Filter bets by sport"
+              value={filterSport}
+              onChange={(e) => setFilterSport(e.target.value)}
+              className="bg-slate-900 border border-slate-700 rounded-lg px-2 py-1.5 text-xs sm:text-sm"
+            >
+              <option value="all">All</option>
+              <option value="nfl">NFL</option>
+              <option value="ncaaf">NCAAF</option>
+              <option value="nba">NBA</option>
+              <option value="mlb">MLB</option>
+              <option value="golf">Golf</option>
+              <option value="soccer">Soccer</option>
+              <option value="other">Other</option>
+            </select>
+          </div>
+
+          <div className="flex flex-col gap-1">
+            <label
+              htmlFor="filter-status"
+              className="text-[10px] uppercase tracking-wide text-slate-500"
+            >
+              Status
+            </label>
+            <select
+              id="filter-status"
+              aria-label="Filter bets by status"
+              value={filterStatus}
+              onChange={(e) =>
+                setFilterStatus(e.target.value as BetStatus | "all")
+              }
+              className="bg-slate-900 border border-slate-700 rounded-lg px-2 py-1.5 text-xs sm:text-sm"
+            >
+              <option value="all">All</option>
+              <option value="pending">Pending</option>
+              <option value="won">Won</option>
+              <option value="lost">Lost</option>
+              <option value="push">Push</option>
+              <option value="void">Void</option>
+            </select>
+          </div>
+
+          <div className="flex flex-col gap-1">
+            <label
+              htmlFor="filter-time"
+              className="text-[10px] uppercase tracking-wide text-slate-500"
+            >
+              Time
+            </label>
+            <select
+              id="filter-time"
+              aria-label="Filter bets by time window"
+              value={filterTime}
+              onChange={(e) => setFilterTime(e.target.value as TimeFilter)}
+              className="bg-slate-900 border border-slate-700 rounded-lg px-2 py-1.5 text-xs sm:text-sm"
+            >
+              <option value="all">All time</option>
+              <option value="7d">Last 7 days</option>
+              <option value="30d">Last 30 days</option>
+              <option value="ytd">Year to date</option>
+            </select>
+          </div>
+
+          <div className="flex flex-col gap-1 ml-auto">
+            <span className="text-[10px] uppercase tracking-wide text-slate-500">
+              Sort
+            </span>
+            <div className="flex gap-2">
+              <label className="sr-only" htmlFor="filter-sort-key">
+                Sort bets by field
+              </label>
+              <select
+                id="filter-sort-key"
+                aria-label="Sort bets by field"
+                value={sortKey}
+                onChange={(e) => setSortKey(e.target.value as SortKey)}
+                className="bg-slate-900 border border-slate-700 rounded-lg px-2 py-1.5 text-xs sm:text-sm"
+              >
+                <option value="created">Date</option>
+                <option value="stake">Stake</option>
+                <option value="result">Result</option>
+              </select>
+
+              <label className="sr-only" htmlFor="filter-sort-dir">
+                Sort direction
+              </label>
+              <select
+                id="filter-sort-dir"
+                aria-label="Sort direction"
+                value={sortDir}
+                onChange={(e) => setSortDir(e.target.value as SortDir)}
+                className="bg-slate-900 border border-slate-700 rounded-lg px-2 py-1.5 text-xs sm:text-sm"
+              >
+                <option value="desc">Desc</option>
+                <option value="asc">Asc</option>
+              </select>
+            </div>
+          </div>
+        </div>
+      </section>
+
       {/* Form */}
       <section className="mb-8 bg-slate-950/80 border border-slate-800 rounded-2xl p-4 sm:p-5">
         <h2 className="text-sm font-semibold text-slate-100 mb-3">
@@ -341,6 +554,7 @@ export default function MyBets() {
             </label>
             <select
               id="bet-sport"
+              name="sport"
               value={form.sport}
               onChange={(e) => updateField("sport", e.target.value)}
               className="bg-slate-900 border border-slate-700 rounded-lg px-2 py-1.5 text-sm"
@@ -364,6 +578,7 @@ export default function MyBets() {
             </label>
             <input
               id="bet-book"
+              name="book_name"
               type="text"
               value={form.book_name}
               onChange={(e) => updateField("book_name", e.target.value)}
@@ -381,6 +596,7 @@ export default function MyBets() {
             </label>
             <input
               id="bet-event"
+              name="event_name"
               type="text"
               value={form.event_name}
               onChange={(e) => updateField("event_name", e.target.value)}
@@ -392,13 +608,14 @@ export default function MyBets() {
 
           <div className="flex flex-col gap-1">
             <label
-              htmlFor="bet-date"
+              htmlFor="bet-event-date"
               className="text-[11px] uppercase tracking-wide text-slate-400"
             >
               Event date
             </label>
             <input
-              id="bet-date"
+              id="bet-event-date"
+              name="event_date"
               type="date"
               value={form.event_date}
               onChange={(e) => updateField("event_date", e.target.value)}
@@ -415,6 +632,7 @@ export default function MyBets() {
             </label>
             <select
               id="bet-type"
+              name="bet_type"
               value={form.bet_type}
               onChange={(e) => updateField("bet_type", e.target.value)}
               className="bg-slate-900 border border-slate-700 rounded-lg px-2 py-1.5 text-sm"
@@ -437,6 +655,7 @@ export default function MyBets() {
             </label>
             <input
               id="bet-selection"
+              name="selection"
               type="text"
               value={form.selection}
               onChange={(e) => updateField("selection", e.target.value)}
@@ -455,6 +674,7 @@ export default function MyBets() {
             </label>
             <input
               id="bet-odds"
+              name="odds_american"
               type="number"
               value={form.odds_american}
               onChange={(e) => updateField("odds_american", e.target.value)}
@@ -473,6 +693,7 @@ export default function MyBets() {
             </label>
             <input
               id="bet-stake"
+              name="stake"
               type="number"
               value={form.stake}
               onChange={(e) => updateField("stake", e.target.value)}
@@ -510,9 +731,10 @@ export default function MyBets() {
 
         {loading ? (
           <p className="text-sm text-slate-400">Loading bets...</p>
-        ) : !bets.length ? (
+        ) : !filteredAndSortedBets.length ? (
           <p className="text-sm text-slate-400">
-            No bets tracked yet. Add your first one above.
+            No bets match your filters. Try changing sport, status, or time
+            window.
           </p>
         ) : (
           <div className="overflow-x-auto rounded-2xl border border-slate-800 bg-slate-950/80">
@@ -529,9 +751,11 @@ export default function MyBets() {
                 </tr>
               </thead>
               <tbody>
-                {bets.map((b) => {
+                {filteredAndSortedBets.map((b) => {
                   const dateLabel = b.event_date
                     ? new Date(b.event_date).toLocaleDateString()
+                    : b.created_at
+                    ? new Date(b.created_at).toLocaleDateString()
                     : "";
 
                   return (
@@ -567,7 +791,9 @@ export default function MyBets() {
                       </td>
                       <td className="px-3 py-2 text-right align-top">
                         <select
-                          aria-label="Bet status"
+                          id={`bet-status-${b.id}`}
+                          name="status"
+                          aria-label={`Status for bet on ${b.event_name}`}
                           value={b.status}
                           onChange={(e) =>
                             handleStatusChange(b, e.target.value as BetStatus)
