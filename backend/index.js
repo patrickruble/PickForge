@@ -179,7 +179,7 @@ async function syncGamesFromPicks(leagueKey) {
       return;
     }
 
-    // 3) Build rows to upsert into `games`
+      // 3) Build rows to upsert into `games`
     const rows = [];
 
     for (const g of apiGames) {
@@ -189,6 +189,7 @@ async function syncGamesFromPicks(leagueKey) {
 
       let homeScore = null;
       let awayScore = null;
+      let hasScores = false;
 
       if (Array.isArray(g.scores)) {
         const homeRow = g.scores.find((s) => s.name === g.home_team);
@@ -196,13 +197,22 @@ async function syncGamesFromPicks(leagueKey) {
 
         if (homeRow?.score != null) {
           const parsed = parseInt(homeRow.score, 10);
-          homeScore = Number.isNaN(parsed) ? null : parsed;
+          if (!Number.isNaN(parsed)) {
+            homeScore = parsed;
+            hasScores = true;
+          }
         }
         if (awayRow?.score != null) {
           const parsed = parseInt(awayRow.score, 10);
-          awayScore = Number.isNaN(parsed) ? null : parsed;
+          if (!Number.isNaN(parsed)) {
+            awayScore = parsed;
+            hasScores = true;
+          }
         }
       }
+
+      // Treat "has real scores" as final even if completed is weird
+      const isFinal = g.completed || hasScores;
 
       rows.push({
         id: g.id,
@@ -211,7 +221,7 @@ async function syncGamesFromPicks(leagueKey) {
         home_team: g.home_team,
         away_team: g.away_team,
         kickoff_time: g.commence_time,
-        status: g.completed ? "final" : "scheduled",
+        status: isFinal ? "final" : "scheduled",
         home_score: homeScore,
         away_score: awayScore,
       });
