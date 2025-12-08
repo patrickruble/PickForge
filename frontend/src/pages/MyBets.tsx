@@ -3,7 +3,7 @@ import { useEffect, useMemo, useState } from "react";
 import { supabase } from "../lib/supabase";
 import type { BetRow, BetStatus } from "../types/bets";
 import { calcToWin, calcResultAmount } from "../lib/betMath";
-import { usePageSeo } from "../hooks/usePageSeo"; // ✅ SEO hook
+import { usePageSeo } from "../hooks/usePageSeo";
 
 type NewBetForm = {
   sport: string;
@@ -34,11 +34,10 @@ function getPrimaryDate(b: BetRow): Date | null {
 }
 
 export default function MyBets() {
-  // ✅ SEO for Bet Tracker page
   usePageSeo({
-    title: "Bet Tracker — Track Your Sports Bets & ROI | PickForge",
+    title: "Bet Tracker — Log & Grade Your Sports Bets | PickForge",
     description:
-      "Use the PickForge bet tracker to log NFL, NBA, NCAAF and other sports bets, see your record, profit/loss, and ROI over time.",
+      "Track every bet you place across NFL, NBA, NCAAF and more. Log odds, stakes and results, and see your net profit and ROI over time.",
   });
 
   const [userId, setUserId] = useState<string | null>(null);
@@ -57,6 +56,9 @@ export default function MyBets() {
     odds_american: "",
     stake: "",
   });
+
+  // Which bet (if any) we're editing
+  const [editingBet, setEditingBet] = useState<BetRow | null>(null);
 
   // Filters + sorting
   const [filterSport, setFilterSport] = useState<string>("all");
@@ -235,12 +237,67 @@ export default function MyBets() {
     setForm((prev) => ({ ...prev, [key]: value }));
   }
 
+  function resetForm() {
+    setForm({
+      sport: "nfl",
+      book_name: "",
+      event_name: "",
+      event_date: "",
+      bet_type: "spread",
+      selection: "",
+      odds_american: "",
+      stake: "",
+    });
+    setEditingBet(null);
+  }
+
+  function startEdit(bet: BetRow) {
+    if (bet.status !== "pending") {
+      alert("Only pending bets can be edited.");
+      return;
+    }
+
+    setEditingBet(bet);
+    setForm({
+      sport: bet.sport || "other",
+      book_name: bet.book_name || "",
+      event_name: bet.event_name || "",
+      event_date: bet.event_date ? bet.event_date.slice(0, 10) : "",
+      bet_type: bet.bet_type || "other",
+      selection: bet.selection || "",
+      odds_american: String(bet.odds_american ?? ""),
+      stake: String(bet.stake ?? ""),
+    });
+  }
+
+  async function handleDeleteBet(bet: BetRow) {
+    const ok = window.confirm("Delete this bet? This cannot be undone.");
+    if (!ok) return;
+
+    const previous = bets;
+    setBets((prev) => prev.filter((b) => b.id !== bet.id));
+
+    const { error } = await supabase.from("bets").delete().eq("id", bet.id);
+
+    if (error) {
+      console.error("[MyBets] delete error:", error);
+      alert("Failed to delete bet. Please try again.");
+      setBets(previous); // rollback
+      return;
+    }
+
+    if (editingBet && editingBet.id === bet.id) {
+      resetForm();
+    }
+  }
+
   async function handleAddBet(e: React.FormEvent) {
     e.preventDefault();
     if (!userId) return;
 
     const odds = Number(form.odds_american);
     const stake = Number(form.stake);
+    const isEditing = !!editingBet;
 
     if (!form.event_name.trim()) {
       alert("Event name is required.");
@@ -259,8 +316,6 @@ export default function MyBets() {
       return;
     }
 
-    const toWin = calcToWin(odds, stake);
-    const result_amount = 0;
     const eventDateIso = form.event_date
       ? new Date(form.event_date + "T00:00:00").toISOString()
       : null;
@@ -269,42 +324,66 @@ export default function MyBets() {
     setError(null);
 
     try {
-      const { data, error } = await supabase
-        .from("bets")
-        .insert({
-          user_id: userId,
-          sport: form.sport || "other",
-          book_name: form.book_name || null,
-          event_name: form.event_name.trim(),
-          event_date: eventDateIso,
-          bet_type: form.bet_type || "other",
-          selection: form.selection.trim(),
-          odds_american: odds,
-          stake,
-          to_win: toWin,
-          status: "pending",
-          result_amount,
-        })
-        .select("*")
-        .single();
+      if (isEditing && editingBet) {
+        const toWin = calcToWin(odds, stake);
 
-      if (error) {
-        throw error;
+        const { data, error } = await supabase
+          .from("bets")
+          .update({
+            sport: form.sport || "other",
+            book_name: form.book_name || null,
+            event_name: form.event_name.trim(),
+            event_date: eventDateIso,
+            bet_type: form.bet_type || "other",
+            selection: form.selection.trim(),
+            odds_american: odds,
+            stake,
+            to_win: toWin,
+          })
+          .eq("id", editingBet.id)
+          .select("*")
+          .single();
+
+        if (error) {
+          throw error;
+        }
+
+        setBets((prev) =>
+          prev.map((b) => (b.id === editingBet.id ? (data as BetRow) : b))
+        );
+      } else {
+        const toWin = calcToWin(odds, stake);
+        const result_amount = 0;
+
+        const { data, error } = await supabase
+          .from("bets")
+          .insert({
+            user_id: userId,
+            sport: form.sport || "other",
+            book_name: form.book_name || null,
+            event_name: form.event_name.trim(),
+            event_date: eventDateIso,
+            bet_type: form.bet_type || "other",
+            selection: form.selection.trim(),
+            odds_american: odds,
+            stake,
+            to_win: toWin,
+            status: "pending",
+            result_amount,
+          })
+          .select("*")
+          .single();
+
+        if (error) {
+          throw error;
+        }
+
+        setBets((prev) => [data as BetRow, ...prev]);
       }
 
-      setBets((prev) => [data as BetRow, ...prev]);
-      setForm({
-        sport: form.sport,
-        book_name: form.book_name,
-        event_name: "",
-        event_date: form.event_date,
-        bet_type: form.bet_type,
-        selection: "",
-        odds_american: "",
-        stake: "",
-      });
+      resetForm();
     } catch (e: any) {
-      console.error("[MyBets] insert error:", e);
+      console.error("[MyBets] insert/update error:", e);
       setError(e.message ?? "Failed to save bet");
     } finally {
       setSaving(false);
@@ -354,8 +433,7 @@ export default function MyBets() {
           Bet Tracker
         </h1>
         <p className="text-sm text-slate-400">
-          Sign in to use the PickForge bet tracker, log your sports bets, and
-          see your real record and ROI.
+          Sign in to track your bets and see your record.
         </p>
       </div>
     );
@@ -363,6 +441,7 @@ export default function MyBets() {
 
   const visibleCount = filteredAndSortedBets.length;
   const totalCount = bets.length;
+  const isEditing = !!editingBet;
 
   return (
     <div className="max-w-5xl mx-auto px-4 py-8 text-slate-200">
@@ -372,8 +451,7 @@ export default function MyBets() {
             Bet Tracker
           </h1>
           <p className="text-xs sm:text-sm text-slate-400 mt-1">
-            Log your NFL, NCAAF, NBA and other sports bets, and track your
-            betting record, profit/loss and ROI over time.
+            Log your bets across any sport and see your record and profit/loss.
           </p>
           {totalCount > 0 && (
             <p className="text-[11px] text-slate-500 mt-1">
@@ -547,9 +625,20 @@ export default function MyBets() {
 
       {/* Form */}
       <section className="mb-8 bg-slate-950/80 border border-slate-800 rounded-2xl p-4 sm:p-5">
-        <h2 className="text-sm font-semibold text-slate-100 mb-3">
-          Add a bet
-        </h2>
+        <div className="flex items-center justify-between gap-2 mb-3">
+          <h2 className="text-sm font-semibold text-slate-100">
+            {isEditing ? "Edit bet" : "Add a bet"}
+          </h2>
+          {isEditing && (
+            <button
+              type="button"
+              onClick={resetForm}
+              className="text-[11px] text-slate-400 hover:text-slate-200 underline underline-offset-2"
+            >
+              Cancel edit
+            </button>
+          )}
+        </div>
 
         <form
           className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3"
@@ -721,7 +810,7 @@ export default function MyBets() {
               disabled={saving}
               className="w-full sm:w-auto bg-yellow-400 text-slate-900 font-semibold px-4 py-2 rounded-xl text-sm disabled:opacity-60"
             >
-              {saving ? "Saving..." : "Add bet"}
+              {saving ? (isEditing ? "Saving..." : "Saving...") : isEditing ? "Save changes" : "Add bet"}
             </button>
           </div>
         </form>
@@ -758,6 +847,7 @@ export default function MyBets() {
                   <th className="px-3 py-2 text-right">To win</th>
                   <th className="px-3 py-2 text-right">Status</th>
                   <th className="px-3 py-2 text-right">Result</th>
+                  <th className="px-3 py-2 text-right">Actions</th>
                 </tr>
               </thead>
               <tbody>
@@ -768,10 +858,15 @@ export default function MyBets() {
                     ? new Date(b.created_at).toLocaleDateString()
                     : "";
 
+                  const isThisEditing =
+                    editingBet && editingBet.id === b.id;
+
                   return (
                     <tr
                       key={b.id}
-                      className="border-t border-slate-800 hover:bg-slate-900/70"
+                      className={`border-t border-slate-800 hover:bg-slate-900/70 ${
+                        isThisEditing ? "bg-slate-900/80" : ""
+                      }`}
                     >
                       <td className="px-3 py-2 align-top">
                         <div className="font-medium text-slate-100">
@@ -806,7 +901,10 @@ export default function MyBets() {
                           aria-label={`Status for bet on ${b.event_name}`}
                           value={b.status}
                           onChange={(e) =>
-                            handleStatusChange(b, e.target.value as BetStatus)
+                            handleStatusChange(
+                              b,
+                              e.target.value as BetStatus
+                            )
                           }
                           className="bg-slate-900 border border-slate-700 rounded-lg px-2 py-1 text-[11px]"
                         >
@@ -830,6 +928,29 @@ export default function MyBets() {
                           {b.result_amount >= 0 ? "+" : ""}
                           {b.result_amount.toFixed(2)}
                         </span>
+                      </td>
+                      <td className="px-3 py-2 text-right align-top space-x-2 whitespace-nowrap">
+                        <button
+                          type="button"
+                          onClick={() => startEdit(b)}
+                          className="inline-flex items-center px-2 py-1 rounded-full border border-slate-600 text-[11px] text-slate-200 hover:bg-slate-800 disabled:opacity-40"
+                          disabled={b.status !== "pending"}
+                          title={
+                            b.status !== "pending"
+                              ? "Only pending bets can be edited"
+                              : "Edit this bet"
+                          }
+                        >
+                          Edit
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleDeleteBet(b)}
+                          className="inline-flex items-center px-2 py-1 rounded-full border border-rose-600/70 text-[11px] text-rose-300 hover:bg-rose-600/10"
+                          title="Delete this bet"
+                        >
+                          Delete
+                        </button>
                       </td>
                     </tr>
                   );
