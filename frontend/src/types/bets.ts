@@ -1,6 +1,8 @@
 // src/types/bets.ts
 export type BetStatus = "pending" | "won" | "lost" | "push" | "void";
 
+export type BetVisibility = "private" | "public" | "followers";
+
 export type BetRow = {
   id: string;
   user_id: string;
@@ -15,6 +17,7 @@ export type BetRow = {
   to_win: number;
   status: BetStatus;
   result_amount: number;
+  visibility: BetVisibility;
   created_at: string;
   updated_at: string;
 };

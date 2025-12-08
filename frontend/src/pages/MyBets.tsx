@@ -1,7 +1,7 @@
 // src/pages/MyBets.tsx
 import { useEffect, useMemo, useState } from "react";
 import { supabase } from "../lib/supabase";
-import type { BetRow, BetStatus } from "../types/bets";
+import type { BetRow, BetStatus, BetVisibility } from "../types/bets";
 import { calcToWin, calcResultAmount } from "../lib/betMath";
 import { usePageSeo } from "../hooks/usePageSeo";
 
@@ -14,6 +14,7 @@ type NewBetForm = {
   selection: string;
   odds_american: string;
   stake: string;
+  visibility: BetVisibility;
 };
 
 type TimeFilter = "all" | "7d" | "30d" | "ytd";
@@ -55,6 +56,7 @@ export default function MyBets() {
     selection: "",
     odds_american: "",
     stake: "",
+    visibility: "private",
   });
 
   // Which bet (if any) we're editing
@@ -247,6 +249,7 @@ export default function MyBets() {
       selection: "",
       odds_american: "",
       stake: "",
+      visibility: "private",
     });
     setEditingBet(null);
   }
@@ -267,6 +270,7 @@ export default function MyBets() {
       selection: bet.selection || "",
       odds_american: String(bet.odds_american ?? ""),
       stake: String(bet.stake ?? ""),
+      visibility: bet.visibility ?? "private",
     });
   }
 
@@ -339,6 +343,7 @@ export default function MyBets() {
             odds_american: odds,
             stake,
             to_win: toWin,
+            visibility: form.visibility ?? "private",
           })
           .eq("id", editingBet.id)
           .select("*")
@@ -370,6 +375,7 @@ export default function MyBets() {
             to_win: toWin,
             status: "pending",
             result_amount,
+            visibility: form.visibility ?? "private",
           })
           .select("*")
           .single();
@@ -421,6 +427,30 @@ export default function MyBets() {
         .eq("user_id", bet.user_id)
         .order("created_at", { ascending: false });
       setBets((data ?? []) as BetRow[]);
+    }
+  }
+
+  async function handleVisibilityChange(
+    bet: BetRow,
+    newVisibility: BetVisibility
+  ) {
+    if (bet.visibility === newVisibility) return;
+
+    const previous = bets;
+    setBets((prev) =>
+      prev.map((b) =>
+        b.id === bet.id ? { ...b, visibility: newVisibility } : b
+      )
+    );
+
+    const { error } = await supabase
+      .from("bets")
+      .update({ visibility: newVisibility })
+      .eq("id", bet.id);
+
+    if (error) {
+      console.error("[MyBets] update visibility error:", error);
+      setBets(previous); // rollback
     }
   }
 
@@ -804,21 +834,47 @@ export default function MyBets() {
             />
           </div>
 
+          <div className="flex flex-col gap-1">
+            <label
+              htmlFor="bet-visibility"
+              className="text-[11px] uppercase tracking-wide text-slate-400"
+            >
+              Share with
+            </label>
+            <select
+              id="bet-visibility"
+              name="visibility"
+              value={form.visibility}
+              onChange={(e) =>
+                updateField("visibility", e.target.value as BetVisibility)
+              }
+              className="bg-slate-900 border border-slate-700 rounded-lg px-2 py-1.5 text-sm"
+            >
+              <option value="private">Only me</option>
+              <option value="followers">Followers</option>
+              <option value="public">Everyone</option>
+            </select>
+          </div>
+
           <div className="flex items-end">
             <button
               type="submit"
               disabled={saving}
               className="w-full sm:w-auto bg-yellow-400 text-slate-900 font-semibold px-4 py-2 rounded-xl text-sm disabled:opacity-60"
             >
-              {saving ? (isEditing ? "Saving..." : "Saving...") : isEditing ? "Save changes" : "Add bet"}
+              {saving
+                ? isEditing
+                  ? "Saving..."
+                  : "Saving..."
+                : isEditing
+                ? "Save changes"
+                : "Add bet"}
             </button>
           </div>
         </form>
 
         {error && (
-          <p className="mt-3 text-xs text-rose-400">
-            {error}
-          </p>
+          <p className="mt-3 text-xs text-rose-400">{error}</p>
         )}
       </section>
 
@@ -847,6 +903,7 @@ export default function MyBets() {
                   <th className="px-3 py-2 text-right">To win</th>
                   <th className="px-3 py-2 text-right">Status</th>
                   <th className="px-3 py-2 text-right">Result</th>
+                  <th className="px-3 py-2 text-right">Visibility</th>
                   <th className="px-3 py-2 text-right">Actions</th>
                 </tr>
               </thead>
@@ -928,6 +985,23 @@ export default function MyBets() {
                           {b.result_amount >= 0 ? "+" : ""}
                           {b.result_amount.toFixed(2)}
                         </span>
+                      </td>
+                      <td className="px-3 py-2 text-right align-top">
+                        <select
+                          aria-label={`Visibility for bet on ${b.event_name}`}
+                          value={b.visibility ?? "private"}
+                          onChange={(e) =>
+                            handleVisibilityChange(
+                              b,
+                              e.target.value as BetVisibility
+                            )
+                          }
+                          className="bg-slate-900 border border-slate-700 rounded-lg px-2 py-1 text-[11px]"
+                        >
+                          <option value="private">Only me</option>
+                          <option value="followers">Followers</option>
+                          <option value="public">Everyone</option>
+                        </select>
                       </td>
                       <td className="px-3 py-2 text-right align-top space-x-2 whitespace-nowrap">
                         <button
