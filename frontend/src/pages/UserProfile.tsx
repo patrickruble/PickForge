@@ -3,6 +3,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useParams, Link } from "react-router-dom";
 import { supabase } from "../lib/supabase";
 import { useAllUserStats } from "../hooks/useAllUserStats";
+import { useProfileBets } from "../hooks/useProfileBets";
 
 type ProfileInfo = {
   id: string;
@@ -401,6 +402,13 @@ export default function UserProfile() {
   const followerCount = followers.length;
   const followingCount = following.length;
 
+  // ---- Bets for this profile (DB / RLS handles visibility) ----
+  const {
+    bets: profileBets,
+    loading: betsLoading,
+    error: betsError,
+  } = useProfileBets(profile?.id ?? null);
+
   // ---------- LOADING / ERROR STATES ----------
 
   if (statsLoading || profileLoading) {
@@ -645,6 +653,100 @@ export default function UserProfile() {
         </div>
       </div>
 
+      {/* Recent bets */}
+      <div className="bg-slate-900/70 p-4 rounded-xl border border-slate-700 mb-6">
+        <div className="flex items-center justify-between mb-2">
+          <h2 className="text-sm font-semibold text-slate-100">Recent bets</h2>
+        </div>
+
+        {betsError && (
+          <p className="text-xs text-rose-400">
+            Failed to load bets. Please try again later.
+          </p>
+        )}
+
+        {!betsError && (
+          <>
+            {betsLoading ? (
+              <p className="text-xs text-slate-500">Loading bets…</p>
+            ) : !profileBets.length ? (
+              <p className="text-xs text-slate-500">
+                No public bets to show. This player may keep their bet log
+                private or hasn&apos;t logged anything yet.
+              </p>
+            ) : (
+              <div className="overflow-x-auto rounded-xl border border-slate-800 bg-slate-950/70 mt-2">
+                <table className="min-w-full text-[11px] sm:text-xs">
+                  <thead className="bg-slate-900/80 text-slate-400 uppercase tracking-wide">
+                    <tr>
+                      <th className="px-3 py-2 text-left">Event</th>
+                      <th className="px-3 py-2 text-left">Selection</th>
+                      <th className="px-3 py-2 text-right">Odds</th>
+                      <th className="px-3 py-2 text-right">Stake</th>
+                      <th className="px-3 py-2 text-right">Result</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {profileBets.slice(0, 10).map((b: any) => {
+                      const dateLabel = b.event_date
+                        ? new Date(b.event_date).toLocaleDateString()
+                        : b.created_at
+                        ? new Date(b.created_at).toLocaleDateString()
+                        : "";
+
+                      return (
+                        <tr
+                          key={b.id}
+                          className="border-t border-slate-800 hover:bg-slate-900/70"
+                        >
+                          <td className="px-3 py-2 align-top">
+                            <div className="font-medium text-slate-100">
+                              {b.event_name}
+                            </div>
+                            <div className="text-[10px] text-slate-500">
+                              {b.sport?.toUpperCase?.() ?? "SPORT"}
+                              {dateLabel ? ` • ${dateLabel}` : ""}
+                              {b.book_name ? ` • ${b.book_name}` : ""}
+                            </div>
+                          </td>
+                          <td className="px-3 py-2 align-top">
+                            <div className="text-slate-200">{b.selection}</div>
+                            <div className="text-[10px] text-slate-500">
+                              {b.bet_type}
+                            </div>
+                          </td>
+                          <td className="px-3 py-2 text-right align-top">
+                            {b.odds_american > 0 ? "+" : ""}
+                            {b.odds_american}
+                          </td>
+                          <td className="px-3 py-2 text-right align-top">
+                            {Number(b.stake).toFixed(2)}
+                          </td>
+                          <td className="px-3 py-2 text-right align-top">
+                            <span
+                              className={
+                                b.result_amount > 0
+                                  ? "text-emerald-400"
+                                  : b.result_amount < 0
+                                  ? "text-rose-400"
+                                  : "text-slate-200"
+                              }
+                            >
+                              {b.result_amount >= 0 ? "+" : ""}
+                              {Number(b.result_amount).toFixed(2)}
+                            </span>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </>
+        )}
+      </div>
+
       {/* Following list */}
       <div className="bg-slate-900/70 p-4 rounded-xl border border-slate-700 mb-4">
         <div className="flex items-center justify-between mb-2">
@@ -694,7 +796,8 @@ export default function UserProfile() {
       </div>
 
       <p className="text-xs text-slate-400">
-        Public profile shows season summary only. Individual picks are private.
+        Public profiles show season stats plus a snapshot of any bets this
+        player chooses to share.
       </p>
     </div>
   );
