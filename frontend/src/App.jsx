@@ -1,20 +1,23 @@
 // src/App.tsx
 import { BrowserRouter, Routes, Route } from "react-router-dom";
+import { Suspense, lazy } from "react";
 import "./App.css";
 import Header from "./components/Header";
-import GameBoard from "./components/GameBoard";
-import MyPicks from "./pages/MyPicks";
-import Leaderboard from "./pages/Leaderboard";
-import Stats from "./pages/Stats";
-import Login from "./pages/Login";
-import Username from "./pages/Username";
-import AuthCallback from "./pages/AuthCallback";
-import UserProfile from "./pages/UserProfile";
-import ResetPassword from "./pages/ResetPassword";
-import Feed from "./pages/Feed";
-import Leagues from "./pages/Leagues";
-import LeagueLeaderboard from "./pages/LeagueLeaderboard";
-import MyBets from "./pages/MyBets";
+
+// Lazy-loaded pages
+const GameBoard = lazy(() => import("./components/GameBoard"));
+const MyPicks = lazy(() => import("./pages/MyPicks"));
+const Leaderboard = lazy(() => import("./pages/Leaderboard"));
+const Stats = lazy(() => import("./pages/Stats"));
+const Login = lazy(() => import("./pages/Login"));
+const Username = lazy(() => import("./pages/Username"));
+const AuthCallback = lazy(() => import("./pages/AuthCallback"));
+const UserProfile = lazy(() => import("./pages/UserProfile"));
+const ResetPassword = lazy(() => import("./pages/ResetPassword"));
+const Feed = lazy(() => import("./pages/Feed"));
+const Leagues = lazy(() => import("./pages/Leagues"));
+const LeagueLeaderboard = lazy(() => import("./pages/LeagueLeaderboard"));
+const MyBets = lazy(() => import("./pages/MyBets"));
 
 export default function App() {
   return (
@@ -23,22 +26,29 @@ export default function App() {
         <Header />
 
         <main className="mx-auto max-w-6xl px-4 py-12">
-          <Routes>
-            <Route path="/" element={<GameBoard />} />
-            <Route path="/mypicks" element={<MyPicks />} />
-            <Route path="/leaderboard" element={<Leaderboard />} />
-            <Route path="/stats" element={<Stats />} />
-            <Route path="/login" element={<Login />} />
-            <Route path="/username" element={<Username />} />
-            <Route path="/reset-password" element={<ResetPassword />} />
-            <Route path="/auth/callback" element={<AuthCallback />} />
-            <Route path="/feed" element={<Feed />} />
-            <Route path="/leagues" element={<Leagues />} />
-            <Route path="/league/:leagueId" element={<LeagueLeaderboard />} />
-            <Route path="/bets" element={<MyBets />} />
-            {/* use a generic slug so it can be either username or id */}
-            <Route path="/u/:slug" element={<UserProfile />} />
-          </Routes>
+          <Suspense
+            fallback={
+              <div className="text-sm text-slate-400">
+                Loading PickForge…
+              </div>
+            }
+          >
+            <Routes>
+              <Route path="/" element={<GameBoard />} />
+              <Route path="/mypicks" element={<MyPicks />} />
+              <Route path="/leaderboard" element={<Leaderboard />} />
+              <Route path="/stats" element={<Stats />} />
+              <Route path="/login" element={<Login />} />
+              <Route path="/username" element={<Username />} />
+              <Route path="/reset-password" element={<ResetPassword />} />
+              <Route path="/auth/callback" element={<AuthCallback />} />
+              <Route path="/feed" element={<Feed />} />
+              <Route path="/leagues" element={<Leagues />} />
+              <Route path="/league/:leagueId" element={<LeagueLeaderboard />} />
+              <Route path="/bets" element={<MyBets />} />
+              <Route path="/u/:slug" element={<UserProfile />} />
+            </Routes>
+          </Suspense>
         </main>
 
         <footer className="mt-16 border-t border-white/5">
