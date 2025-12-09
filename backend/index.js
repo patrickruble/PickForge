@@ -156,7 +156,7 @@ async function syncGamesFromPicks(leagueKey) {
       `https://api.the-odds-api.com/v4/sports/${leagueKey}/scores`
     );
     scoresUrl.searchParams.set("apiKey", ODDS_KEY);
-    scoresUrl.searchParams.set("daysFrom", "3");      // look ~1 week around today
+    scoresUrl.searchParams.set("daysFrom", "3"); // look a few days around today
     scoresUrl.searchParams.set("dateFormat", "iso");
 
     const resp = await fetch(scoresUrl.toString());
@@ -179,7 +179,7 @@ async function syncGamesFromPicks(leagueKey) {
       return;
     }
 
-      // 3) Build rows to upsert into `games`
+    // 3) Build rows to upsert into `games`
     const rows = [];
 
     for (const g of apiGames) {
@@ -211,17 +211,26 @@ async function syncGamesFromPicks(leagueKey) {
         }
       }
 
-      // Treat "has real scores" as final even if completed is weird
-      const isFinal = g.completed || hasScores;
+      // Decide game status:
+      // - completed -> "final"
+      // - has scores but not completed -> "live"
+      // - no scores yet -> "scheduled"
+      let status = "scheduled";
+
+      if (g.completed) {
+        status = "final";
+      } else if (hasScores) {
+        status = "live";
+      }
 
       rows.push({
         id: g.id,
-        league: dbLeague,            // 'nfl' | 'ncaaf'
-        week,                        // guaranteed non-null
+        league: dbLeague, // 'nfl' | 'ncaaf'
+        week, // guaranteed non-null
         home_team: g.home_team,
         away_team: g.away_team,
         kickoff_time: g.commence_time,
-        status: isFinal ? "final" : "scheduled",
+        status,
         home_score: homeScore,
         away_score: awayScore,
       });
