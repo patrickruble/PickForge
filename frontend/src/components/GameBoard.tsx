@@ -1,3 +1,4 @@
+import { useState } from "react";
 // src/components/GameBoard.tsx
 import { useLines } from "../api/useLines";
 import { useRemotePicks, getNflWeekNumber } from "../hooks/useRemotePicks";
@@ -96,6 +97,9 @@ export default function GameBoard() {
     description:
       "Free NFL pick’em game. Make weekly NFL picks against the spread and moneyline, track your record and ROI, and compete on the PickForge leaderboard.",
   });
+
+  // Game mode: standard weekly pick'em vs Moneyline Mastery view
+  const [mode, setMode] = useState<"standard" | "mm">("standard");
 
   const { games, isLoading, isValidating, error, refresh } = useLines("nfl");
 
@@ -196,7 +200,9 @@ export default function GameBoard() {
             <span className="text-yellow-400">NFL Week {week}</span>
           </h1>
           <p className="text-xs sm:text-sm text-slate-400 mt-1">
-            Tap a side to lock in your pick. Games lock at kickoff.
+            {mode === "mm"
+              ? "Moneyline Mastery view — focus on your moneyline picks. Games lock at kickoff."
+              : "Tap a side to lock in your weekly pick. Games lock at kickoff."}
           </p>
           <p className="text-[11px] text-slate-500 mt-1">{windowLabel}</p>
         </div>
@@ -219,6 +225,30 @@ export default function GameBoard() {
             <span className="font-semibold text-yellow-400 font-mono text-sm">
               {count}
             </span>
+          </div>
+          <div className="flex items-center bg-slate-900/80 border border-slate-700/80 rounded-full p-1">
+            <button
+              type="button"
+              onClick={() => setMode("standard")}
+              className={`px-3 py-1 rounded-full text-[11px] sm:text-xs transition ${
+                mode === "standard"
+                  ? "bg-yellow-400 text-slate-900 font-semibold shadow-[0_0_10px_rgba(250,204,21,0.6)]"
+                  : "text-slate-300 hover:text-slate-100"
+              }`}
+            >
+              Pick&apos;em
+            </button>
+            <button
+              type="button"
+              onClick={() => setMode("mm")}
+              className={`px-3 py-1 rounded-full text-[11px] sm:text-xs transition ${
+                mode === "mm"
+                  ? "bg-yellow-400 text-slate-900 font-semibold shadow-[0_0_10px_rgba(250,204,21,0.6)]"
+                  : "text-slate-300 hover:text-slate-100"
+              }`}
+            >
+              MM
+            </button>
           </div>
         </div>
       </div>
@@ -261,7 +291,9 @@ export default function GameBoard() {
         {/* Desktop header row (hidden on mobile) */}
         <div className="hidden sm:grid grid-cols-12 px-4 py-2 text-[10px] sm:text-xs uppercase tracking-wide text-slate-400 border-b border-slate-800">
           <div className="col-span-5">Away</div>
-          <div className="col-span-2 text-center">Spread / Lock</div>
+          <div className="col-span-2 text-center">
+            {mode === "mm" ? "Moneyline / Lock" : "Spread / Lock"}
+          </div>
           <div className="col-span-5 text-right">Home</div>
         </div>
 
@@ -326,18 +358,34 @@ export default function GameBoard() {
                                   ? "Locked (game started)"
                                   : !isAuthed
                                   ? "Login to pick"
+                                  : mode === "mm"
+                                  ? "Moneyline pick (away)"
                                   : "Pick away"
                               }
                             >
-                              {isAway ? "Picked" : "Pick"}
+                              {mode === "mm"
+                                ? isAway
+                                  ? `ML ${fmtOdds(awayML)}`
+                                  : `ML ${fmtOdds(awayML)}`
+                                : isAway
+                                ? "Picked"
+                                : "Pick"}
                             </button>
                           </div>
 
-                          {/* Spread / lock */}
+                          {/* Spread / lock (or ML focus in MM mode) */}
                           <div className="flex items-center justify-between sm:flex-col sm:justify-center sm:items-center sm:col-span-2 text-center gap-1">
                             <div className="text-[11px] sm:text-xs font-medium text-slate-200">
-                              {fmtSigned(g.spreadAway ?? null)} /{" "}
-                              {fmtSigned(g.spreadHome ?? null)}
+                              {mode === "mm" ? (
+                                <>
+                                  ML {fmtOdds(awayML)} / ML {fmtOdds(homeML)}
+                                </>
+                              ) : (
+                                <>
+                                  {fmtSigned(g.spreadAway ?? null)} /{" "}
+                                  {fmtSigned(g.spreadHome ?? null)}
+                                </>
+                              )}
                             </div>
                             <span
                               className={
@@ -361,10 +409,18 @@ export default function GameBoard() {
                                   ? "Locked (game started)"
                                   : !isAuthed
                                   ? "Login to pick"
+                                  : mode === "mm"
+                                  ? "Moneyline pick (home)"
                                   : "Pick home"
                               }
                             >
-                              {isHome ? "Picked" : "Pick"}
+                              {mode === "mm"
+                                ? isHome
+                                  ? `ML ${fmtOdds(homeML)}`
+                                  : `ML ${fmtOdds(homeML)}`
+                                : isHome
+                                ? "Picked"
+                                : "Pick"}
                             </button>
                             <div className="flex-1 min-w-0 text-right">
                               <TeamBadge name={g.home} align="right" />
@@ -389,7 +445,8 @@ export default function GameBoard() {
       {/* Tiny helper copy at bottom */}
       <p className="mt-3 text-[11px] text-slate-500">
         Picks are saved instantly to your account. You can change sides until a
-        game locks at kickoff.
+        game locks at kickoff. Moneyline Mastery uses your graded moneyline
+        picks across the season.
       </p>
     </div>
   );

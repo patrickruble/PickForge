@@ -74,6 +74,9 @@ export default function MyPicks() {
   const [rows, setRows] = useState<PickWithGame[]>([]);
   const [loadingPicks, setLoadingPicks] = useState(true);
 
+  // Mode toggle: show all weekly picks vs only Moneyline Mastery (ML) picks
+  const [mode, setMode] = useState<"all" | "mm">("all");
+
   // Lines (we only use them for context; don't block UI on them)
   const { games, isLoading: linesLoading } = useLines("nfl");
 
@@ -193,6 +196,16 @@ export default function MyPicks() {
 
   const weekNum = getNflWeekNumber(new Date());
 
+  const visibleRows = useMemo(
+    () =>
+      mode === "all"
+        ? rows
+        : rows.filter(
+            (r) => r.picked_price_type === "ml" && r.picked_price != null
+          ),
+    [mode, rows]
+  );
+
   // -------- Loading state --------
 
   if (!uid || loadingPicks) {
@@ -257,14 +270,42 @@ export default function MyPicks() {
             These are your saved picks for this week’s NFL games.
           </p>
         </div>
-        <div className="text-[11px] sm:text-xs text-slate-400">
-          <span className="font-semibold text-slate-100">{rows.length}</span>{" "}
-          picks locked in.
+        <div className="flex flex-col sm:flex-row items-start sm:items-center gap-2 text-[11px] sm:text-xs text-slate-400">
+          <div>
+            <span className="font-semibold text-slate-100">
+              {visibleRows.length}
+            </span>{" "}
+            {mode === "all" ? "picks locked in." : "ML picks (Moneyline Mastery)."}
+          </div>
+          <div className="flex items-center bg-slate-900/80 border border-slate-700/80 rounded-full p-1">
+            <button
+              type="button"
+              onClick={() => setMode("all")}
+              className={`px-3 py-1 rounded-full text-[11px] sm:text-xs transition ${
+                mode === "all"
+                  ? "bg-yellow-400 text-slate-900 font-semibold shadow-[0_0_10px_rgba(250,204,21,0.6)]"
+                  : "text-slate-300 hover:text-slate-100"
+              }`}
+            >
+              All
+            </button>
+            <button
+              type="button"
+              onClick={() => setMode("mm")}
+              className={`px-3 py-1 rounded-full text-[11px] sm:text-xs transition ${
+                mode === "mm"
+                  ? "bg-yellow-400 text-slate-900 font-semibold shadow-[0_0_10px_rgba(250,204,21,0.6)]"
+                  : "text-slate-300 hover:text-slate-100"
+              }`}
+            >
+              MM
+            </button>
+          </div>
         </div>
       </header>
 
       <ul className="space-y-3">
-        {rows.map((r) => {
+        {visibleRows.map((r) => {
           const gm = gameMap.get(r.game_id);
           const snap = (r.picked_snapshot ?? {}) as PickSnapshot;
 
