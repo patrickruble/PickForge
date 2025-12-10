@@ -102,6 +102,11 @@ export default function Leaderboard() {
   // Week vs season view
   const [viewMode, setViewMode] = useState<"week" | "season">("week");
 
+  // Metric mode: standard (win%) vs Moneyline Mastery
+  const [metricMode, setMetricMode] = useState<"standard" | "mm">(
+    "standard"
+  );
+
   // Search term for players
   const [searchTerm, setSearchTerm] = useState("");
 
@@ -317,8 +322,42 @@ export default function Leaderboard() {
     };
   }, [allAggregatedForProfiles, profilesMap]);
 
-  const activeAggregated =
-    viewMode === "week" ? weekAggregated : seasonAggregated;
+  const activeAggregated: LeaderItem[] = useMemo(() => {
+    if (viewMode === "week") return weekAggregated;
+
+    // For season view, allow toggling between standard (win%) and Moneyline Mastery sorting
+    const base = [...seasonAggregated];
+
+    if (metricMode === "mm") {
+      // Sort by Moneyline Mastery (desc), then fall back to win% and wins
+      base.sort((a, b) => {
+        const sa = statsByUser[a.user_id];
+        const sb = statsByUser[b.user_id];
+        const ma =
+          sa && typeof sa.moneylineMastery === "number"
+            ? sa.moneylineMastery
+            : -Infinity;
+        const mb =
+          sb && typeof sb.moneylineMastery === "number"
+            ? sb.moneylineMastery
+            : -Infinity;
+
+        if (mb !== ma) return mb - ma;
+
+        // Tie-breakers: win% then raw wins
+        if (b.winPct !== a.winPct) return b.winPct - a.winPct;
+        return b.wins - a.wins;
+      });
+    } else {
+      // Standard season sort: win% then wins
+      base.sort((a, b) => {
+        if (b.winPct !== a.winPct) return b.winPct - a.winPct;
+        return b.wins - a.wins;
+      });
+    }
+
+    return base;
+  }, [viewMode, weekAggregated, seasonAggregated, metricMode, statsByUser]);
 
   // Tie-aware rank map (same stats share rank; next rank skips)
   const rankMap = useMemo(() => {
@@ -505,6 +544,32 @@ export default function Leaderboard() {
             </button>
           </div>
 
+          {/* Metric toggle (only for season view) */}
+          {!isWeekView && (
+            <div className="flex items-center bg-slate-900/80 border border-slate-700/80 rounded-full p-1">
+              <button
+                onClick={() => setMetricMode("standard")}
+                className={`px-3 py-1 rounded-full text-[11px] sm:text-xs transition ${
+                  metricMode === "standard"
+                    ? "bg-yellow-400 text-slate-900 font-semibold shadow-[0_0_10px_rgba(250,204,21,0.6)]"
+                    : "text-slate-300 hover:text-slate-100"
+                }`}
+              >
+                Standard
+              </button>
+              <button
+                onClick={() => setMetricMode("mm")}
+                className={`px-3 py-1 rounded-full text-[11px] sm:text-xs transition ${
+                  metricMode === "mm"
+                    ? "bg-yellow-400 text-slate-900 font-semibold shadow-[0_0_10px_rgba(250,204,21,0.6)]"
+                    : "text-slate-300 hover:text-slate-100"
+                }`}
+              >
+                MM
+              </button>
+            </div>
+          )}
+
           {/* Search input */}
           <div className="w-full sm:w-44 md:w-56">
             <input
@@ -591,6 +656,13 @@ export default function Leaderboard() {
               ? `${seasonStats.currentStreakType}${seasonStats.currentStreakLen}`
               : "—";
 
+          const moneylineMasteryText =
+            seasonStats && typeof seasonStats.moneylineMastery === "number"
+              ? `${seasonStats.moneylineMastery >= 0 ? "+" : ""}${seasonStats.moneylineMastery.toFixed(
+                  0
+                )}`
+              : "—";
+
           // Primary display based on view
           const primaryRecordText = isWeekView
             ? weekRecordText
@@ -650,6 +722,7 @@ export default function Leaderboard() {
                     <>
                       This week {weekRecordText} · Win {weekWinPctText} · Streak{" "}
                       {seasonStreakText}
+                      {metricMode === "mm" && <> · MM {moneylineMasteryText}</>}
                     </>
                   )}
                 </div>

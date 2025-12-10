@@ -529,6 +529,25 @@ export default function UserProfile() {
       ? formatStreak(stats.currentStreakType, stats.currentStreakLen)
       : "L1";
 
+  const moneylineMasteryLabel =
+    stats && typeof stats.moneylineMastery === "number"
+      ? `${stats.moneylineMastery >= 0 ? "+" : ""}${stats.moneylineMastery.toFixed(
+          0
+        )}`
+      : "+0";
+
+  const mlVolume =
+    stats && typeof stats.mlWins === "number"
+      ? stats.mlWins + stats.mlLosses + stats.mlPushes
+      : 0;
+
+  const mlRecordText =
+    stats && mlVolume > 0
+      ? `${stats.mlWins}-${stats.mlLosses}${
+          stats.mlPushes ? `-${stats.mlPushes}` : ""
+        }`
+      : "0-0";
+
   return (
     <div className="max-w-4xl mx-auto px-4 py-10 text-slate-200">
       {/* Header */}
@@ -796,6 +815,28 @@ export default function UserProfile() {
                 </span>
               ))}
             </div>
+          </div>
+
+          <div className="mt-4 border-t border-slate-800 pt-3">
+            <p className="text-[11px] uppercase tracking-wide text-slate-400 mb-1">
+              Moneyline Mastery
+            </p>
+            <p className="text-sm text-slate-300">
+              Score{" "}
+              <span className="font-semibold text-yellow-400">
+                {moneylineMasteryLabel}
+              </span>
+              {mlVolume > 0 && (
+                <span className="text-[11px] text-slate-400 ml-1">
+                  ({mlRecordText} ML)
+                </span>
+              )}
+            </p>
+            {mlVolume === 0 && (
+              <p className="text-[11px] text-slate-500 mt-1">
+                Play some moneylines to start your Moneyline Mastery score.
+              </p>
+            )}
           </div>
         </div>
       </div>

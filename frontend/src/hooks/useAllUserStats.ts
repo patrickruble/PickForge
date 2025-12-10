@@ -1,6 +1,10 @@
 // src/hooks/useAllUserStats.ts
 import { useEffect, useState } from "react";
 import { supabase } from "../lib/supabase";
+import {
+  moneylineMasteryDelta,
+  MoneylineOutcome,
+} from "../lib/MoneylineMastery";
 
 type League = "nfl" | "ncaaf";
 
@@ -33,6 +37,12 @@ export type UserSeasonStats = {
   winRate: number;
   currentStreakType: "W" | "L" | null;
   currentStreakLen: number;
+  // Moneyline Mastery: cumulative score from moneyline-only picks
+  moneylineMastery: number;
+  // Moneyline-only record
+  mlWins: number;
+  mlLosses: number;
+  mlPushes: number;
 };
 
 type StatsByUser = Record<string, UserSeasonStats>;
@@ -163,6 +173,10 @@ export function useAllUserStats(): {
               winRate: 0,
               currentStreakType: null,
               currentStreakLen: 0,
+              moneylineMastery: 0,
+              mlWins: 0,
+              mlLosses: 0,
+              mlPushes: 0,
             };
           }
 
@@ -190,6 +204,24 @@ export function useAllUserStats(): {
 
           s.totalPicks = s.wins + s.losses + s.pushes;
           s.winRate = safePct(s.wins, s.wins + s.losses) * 100;
+
+          // Moneyline Mastery accumulation (moneyline-only picks)
+          if (p.picked_price_type === "ml" && p.picked_price != null) {
+            const outcome = grade as MoneylineOutcome;
+
+            // Update moneyline-only record
+            if (grade === "win") {
+              s.mlWins++;
+            } else if (grade === "loss") {
+              s.mlLosses++;
+            } else if (grade === "push") {
+              s.mlPushes++;
+            }
+
+            // Accumulate mastery score based on captured odds and outcome
+            const delta = moneylineMasteryDelta(p.picked_price, outcome);
+            s.moneylineMastery += delta;
+          }
         }
 
         // 5) Compute current streak per user from most recent graded pick backwards
