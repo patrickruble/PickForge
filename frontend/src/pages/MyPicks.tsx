@@ -332,48 +332,126 @@ export default function MyPicks() {
           const away = gm?.away ?? snap.away ?? "AWAY";
           const when = new Date(r.commence_at).toLocaleString();
 
-          // Prefer saved price; else show current side’s line; else snapshot
+          // Prefer saved price; else show current side’s line or snapshot.
+          // In MM mode, we always show a moneyline for the picked team if we have one.
           let label = "";
-          if (r.picked_price_type) {
-            label =
-              r.picked_price_type === "spread"
-                ? `Spread ${fmtSigned(r.picked_price ?? null)} (saved)`
-                : `ML ${fmtSigned(r.picked_price ?? null)} (saved)`;
-          } else if (gm) {
-            if (r.side === "home") {
-              label =
-                gm.spreadHome != null
-                  ? `Spread ${fmtSigned(gm.spreadHome)}`
-                  : gm.mlHome != null
-                  ? `ML ${fmtSigned(gm.mlHome)}`
-                  : "";
-            } else {
-              label =
-                gm.spreadAway != null
-                  ? `Spread ${fmtSigned(gm.spreadAway)}`
-                  : gm.mlAway != null
-                  ? `ML ${fmtSigned(gm.mlAway)}`
-                  : "";
+
+          if (mode === "mm") {
+            // Moneyline Mastery view: show ML for the side you picked
+            let ml: number | null = null;
+            let source: "saved" | "current" | null = null;
+
+            // If this pick was explicitly saved as ML, use that first
+            if (r.picked_price_type === "ml" && r.picked_price != null) {
+              ml = r.picked_price;
+              source = "saved";
+            } else if (gm) {
+              if (r.side === "home" && gm.mlHome != null) {
+                ml = gm.mlHome;
+                source = "current";
+              } else if (r.side === "away" && gm.mlAway != null) {
+                ml = gm.mlAway;
+                source = "current";
+              }
             }
-            if (label) label += " (current line)";
-          } else if (snap) {
-            if (r.side === "home") {
-              label =
-                snap.spreadHome != null
-                  ? `Spread ${fmtSigned(snap.spreadHome)} (saved)`
-                  : snap.mlHome != null
-                  ? `ML ${fmtSigned(snap.mlHome)} (saved)`
-                  : "";
-            } else {
-              label =
-                snap.spreadAway != null
-                  ? `Spread ${fmtSigned(snap.spreadAway)} (saved)`
-                  : snap.mlAway != null
-                  ? `ML ${fmtSigned(snap.mlAway)} (saved)`
-                  : "";
+
+            // Fallback to snapshot ML if we have it
+            if (ml == null && snap) {
+              if (r.side === "home" && snap.mlHome != null) {
+                ml = snap.mlHome;
+                source = "saved";
+              } else if (r.side === "away" && snap.mlAway != null) {
+                ml = snap.mlAway;
+                source = "saved";
+              }
+            }
+
+            // MM mode: show ML *display*, but also show original spread pick if it exists
+            if (ml != null) {
+              if (r.picked_price_type === "spread" && r.picked_price != null) {
+                // Show BOTH: your Moneyline for MM scoring AND the actual spread you locked
+                label = `ML ${fmtSigned(ml)}${
+                  source === "saved"
+                    ? " (saved)"
+                    : source === "current"
+                    ? " (current line)"
+                    : ""
+                } • Spread ${fmtSigned(r.picked_price)} (saved)`;
+              } else {
+                // Pure moneyline pick
+                label = `ML ${fmtSigned(ml)}${
+                  source === "saved"
+                    ? " (saved)"
+                    : source === "current"
+                    ? " (current line)"
+                    : ""
+                }`;
+              }
             }
           } else {
-            label = "(resolving teams…)";
+            // Normal view: for Pick'em, prefer the spread you locked in.
+            if (r.picked_price_type) {
+              if (r.picked_price_type === "spread" && r.picked_price != null) {
+                // Classic spread pick
+                label = `Spread ${fmtSigned(r.picked_price)} (saved)`;
+              } else if (r.picked_price_type === "ml") {
+                // This pick has an ML saved at the row level, but for Pick'em
+                // we still want to show the spread you locked, if we have it
+                let spreadForSide: number | null = null;
+                if (snap) {
+                  if (r.side === "home" && snap.spreadHome != null) {
+                    spreadForSide = snap.spreadHome;
+                  } else if (r.side === "away" && snap.spreadAway != null) {
+                    spreadForSide = snap.spreadAway;
+                  }
+                }
+
+                if (spreadForSide != null) {
+                  label = `Spread ${fmtSigned(spreadForSide)} (saved)`;
+                } else {
+                  // Fallback: we at least show the saved ML
+                  label = `ML ${fmtSigned(r.picked_price ?? null)} (saved)`;
+                }
+              } else {
+                // Fallback for any other future type
+                label = `ML ${fmtSigned(r.picked_price ?? null)} (saved)`;
+              }
+            } else if (gm) {
+              if (r.side === "home") {
+                label =
+                  gm.spreadHome != null
+                    ? `Spread ${fmtSigned(gm.spreadHome)}`
+                    : gm.mlHome != null
+                    ? `ML ${fmtSigned(gm.mlHome)}`
+                    : "";
+              } else {
+                label =
+                  gm.spreadAway != null
+                    ? `Spread ${fmtSigned(gm.spreadAway)}`
+                    : gm.mlAway != null
+                    ? `ML ${fmtSigned(gm.mlAway)}`
+                    : "";
+              }
+              if (label) label += " (current line)";
+            } else if (snap) {
+              if (r.side === "home") {
+                label =
+                  snap.spreadHome != null
+                    ? `Spread ${fmtSigned(snap.spreadHome)} (saved)`
+                    : snap.mlHome != null
+                    ? `ML ${fmtSigned(snap.mlHome)} (saved)`
+                    : "";
+              } else {
+                label =
+                  snap.spreadAway != null
+                    ? `Spread ${fmtSigned(snap.spreadAway)} (saved)`
+                    : snap.mlAway != null
+                    ? `ML ${fmtSigned(snap.mlAway)} (saved)`
+                    : "";
+              }
+            } else {
+              label = "(resolving teams…)";
+            }
           }
 
           const pickedIsAway = r.side === "away";

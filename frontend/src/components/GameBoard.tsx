@@ -362,7 +362,19 @@ export default function GameBoard() {
                             </div>
                             <button
                               className={`${btnBase} ${awayCls}`}
-                              onClick={() => togglePick(g, "away")}
+                              onClick={() => {
+                                // In MM mode, only allow picking if we actually have a moneyline price
+                                if (mode === "mm" && typeof awayML !== "number") {
+                                  return;
+                                }
+                                togglePick(g, "away", {
+                                  priceType: mode === "mm" ? "ml" : "spread",
+                                  price:
+                                    mode === "mm"
+                                      ? awayML ?? null
+                                      : g.spreadAway ?? null,
+                                });
+                              }}
                               disabled={locked || !isAuthed}
                               title={
                                 locked
@@ -413,7 +425,19 @@ export default function GameBoard() {
                           <div className="flex items-center gap-2 justify-between sm:justify-end min-w-0 sm:col-span-5">
                             <button
                               className={`${btnBase} ${homeCls}`}
-                              onClick={() => togglePick(g, "home")}
+                              onClick={() => {
+                                // In MM mode, only allow picking if we actually have a moneyline price
+                                if (mode === "mm" && typeof homeML !== "number") {
+                                  return;
+                                }
+                                togglePick(g, "home", {
+                                  priceType: mode === "mm" ? "ml" : "spread",
+                                  price:
+                                    mode === "mm"
+                                      ? homeML ?? null
+                                      : g.spreadHome ?? null,
+                                });
+                              }}
                               disabled={locked || !isAuthed}
                               title={
                                 locked

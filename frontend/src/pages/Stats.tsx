@@ -225,6 +225,8 @@ export default function Stats() {
 
   // Selected week for detailed breakdown (defaults to most recent)
   const [selectedWeek, setSelectedWeek] = useState<number | null>(null);
+  // Mode for breakdown: show all picks vs moneyline-only (Moneyline Mastery)
+  const [breakdownMode, setBreakdownMode] = useState<"all" | "mm">("all");
 
   useEffect(() => {
     if (!weeks.length) return;
@@ -233,16 +235,34 @@ export default function Stats() {
     }
   }, [weeks, selectedWeek]);
 
-  // Picks visible in the breakdown table for the selected week
-  const visiblePicks = useMemo(
-    () =>
+  // Picks visible in the breakdown table for the selected week + mode
+  const visiblePicks = useMemo(() => {
+    const base =
       selectedWeek === null
-        ? gradedRows
-        : gradedRows.filter(
-            (p) => (p.game?.week ?? p.week) === selectedWeek
-          ),
-    [gradedRows, selectedWeek]
-  );
+        ? rows
+        : rows.filter((p) => (p.game?.week ?? p.week) === selectedWeek);
+
+    if (breakdownMode === "mm") {
+      // Moneyline-only picks (what Moneyline Mastery actually uses)
+      return base.filter(
+        (p) => p.picked_price_type === "ml" && p.picked_price != null
+      );
+    }
+
+    // All picks
+    return base;
+  }, [rows, selectedWeek, breakdownMode]);
+
+  // Count of ML picks for the selected week (used in helper text)
+  const mlCountForSelectedWeek = useMemo(() => {
+    const base =
+      selectedWeek === null
+        ? rows
+        : rows.filter((p) => (p.game?.week ?? p.week) === selectedWeek);
+    return base.filter(
+      (p) => p.picked_price_type === "ml" && p.picked_price != null
+    ).length;
+  }, [rows, selectedWeek]);
 
   if (loading) {
     return (
@@ -391,27 +411,60 @@ export default function Stats() {
         <div className="flex items-center justify-between gap-3 mb-3">
           <h2 className="text-lg font-semibold">Pick breakdown</h2>
           {weeks.length > 0 && selectedWeek !== null && (
-            <div className="flex items-center gap-2 text-[11px] sm:text-xs text-slate-300">
-              <span className="text-slate-400">Week:</span>
-              <select
-                aria-label="Select week for pick breakdown"
-                value={selectedWeek}
-                onChange={(e) => setSelectedWeek(Number(e.target.value))}
-                className="bg-slate-900 border border-slate-700 rounded-full px-2 py-1 text-[11px] sm:text-xs text-slate-100 focus:outline-none focus:ring-1 focus:ring-yellow-400"
-              >
-                {weeks.map((w) => (
-                  <option key={w} value={w}>
-                    Week {w}
-                  </option>
-                ))}
-              </select>
+            <div className="flex flex-col sm:flex-row items-end sm:items-center gap-2 text-[11px] sm:text-xs text-slate-300">
+              <div className="flex items-center gap-2">
+                <span className="text-slate-400">Week:</span>
+                <select
+                  aria-label="Select week for pick breakdown"
+                  value={selectedWeek}
+                  onChange={(e) => setSelectedWeek(Number(e.target.value))}
+                  className="bg-slate-900 border border-slate-700 rounded-full px-2 py-1 text-[11px] sm:text-xs text-slate-100 focus:outline-none focus:ring-1 focus:ring-yellow-400"
+                >
+                  {weeks.map((w) => (
+                    <option key={w} value={w}>
+                      Week {w}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div className="flex items-center bg-slate-900/80 border border-slate-700/80 rounded-full p-1">
+                <button
+                  type="button"
+                  onClick={() => setBreakdownMode("all")}
+                  className={`px-3 py-1 rounded-full text-[11px] sm:text-xs transition ${
+                    breakdownMode === "all"
+                      ? "bg-yellow-400 text-slate-900 font-semibold shadow-[0_0_10px_rgba(250,204,21,0.6)]"
+                      : "text-slate-300 hover:text-slate-100"
+                  }`}
+                >
+                  All
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setBreakdownMode("mm")}
+                  className={`px-3 py-1 rounded-full text-[11px] sm:text-xs transition ${
+                    breakdownMode === "mm"
+                      ? "bg-yellow-400 text-slate-900 font-semibold shadow-[0_0_10px_rgba(250,204,21,0.6)]"
+                      : "text-slate-300 hover:text-slate-100"
+                  }`}
+                >
+                  MM
+                </button>
+              </div>
             </div>
           )}
         </div>
         <p className="text-xs text-slate-400 mb-3">
-          Viewing picks for{" "}
-          {selectedWeek !== null ? `Week ${selectedWeek}` : "recent weeks"}.
+          Viewing{" "}
+          {breakdownMode === "mm" ? "moneyline-only picks" : "all picks"} for{" "}
+          {selectedWeek !== null ? `Week ${selectedWeek}` : "recent weeks"}.{" "}
           Result and "Covered" are only shown once a game is final.
+          {breakdownMode === "mm" && mlCountForSelectedWeek === 0 && (
+            <> You don&apos;t have any moneyline picks for this week yet, so there&apos;s nothing to show here.</>
+          )}
+          {breakdownMode === "mm" && mlCountForSelectedWeek > 0 && (
+            <> Moneyline Mastery uses these graded moneyline picks.</>
+          )}
         </p>
 
         <div className="overflow-x-auto">

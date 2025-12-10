@@ -122,7 +122,14 @@ export function useRemotePicks() {
   }, [ready, userId]);
 
   const togglePick = useCallback(
-    async (game: Game, side: PickSide) => {
+    async (
+      game: Game,
+      side: PickSide,
+      opts?: {
+        priceType?: "spread" | "ml" | null;
+        price?: number | null;
+      }
+    ) => {
       if (!userId) { alert("Please log in to make picks."); return; }
 
       const gameId = game.id;
@@ -135,14 +142,29 @@ export function useRemotePicks() {
       const mlHome = game.moneyline?.[game.home] ?? null;
       const mlAway = game.moneyline?.[game.away] ?? null;
 
-      let picked_price_type: "spread" | "ml" | null = null;
-      let picked_price: number | null = null;
-      if (side === "home") {
-        if (spreadHome != null) { picked_price_type = "spread"; picked_price = spreadHome; }
-        else if (mlHome != null) { picked_price_type = "ml"; picked_price = mlHome; }
-      } else {
-        if (spreadAway != null) { picked_price_type = "spread"; picked_price = spreadAway; }
-        else if (mlAway != null) { picked_price_type = "ml"; picked_price = mlAway; }
+      // Start with any explicit values passed from the caller (e.g. Moneyline Mastery mode)
+      let picked_price_type: "spread" | "ml" | null = opts?.priceType ?? null;
+      let picked_price: number | null = opts?.price ?? null;
+
+      // If the caller didn't supply explicit pricing, fall back to legacy auto-detection
+      if (!picked_price_type || picked_price == null) {
+        if (side === "home") {
+          if (spreadHome != null) {
+            picked_price_type = "spread";
+            picked_price = spreadHome;
+          } else if (mlHome != null) {
+            picked_price_type = "ml";
+            picked_price = mlHome;
+          }
+        } else {
+          if (spreadAway != null) {
+            picked_price_type = "spread";
+            picked_price = spreadAway;
+          } else if (mlAway != null) {
+            picked_price_type = "ml";
+            picked_price = mlAway;
+          }
+        }
       }
 
       const picked_snapshot = {
