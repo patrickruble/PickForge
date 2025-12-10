@@ -608,31 +608,35 @@ export default function Leaderboard() {
             </button>
           </div>
 
-          {/* Metric toggle (only for season view) */}
-          {!isWeekView && (
-            <div className="flex items-center bg-slate-900/80 border border-slate-700/80 rounded-full p-1">
-              <button
-                onClick={() => setMetricMode("standard")}
-                className={`px-3 py-1 rounded-full text-[11px] sm:text-xs transition ${
-                  metricMode === "standard"
-                    ? "bg-yellow-400 text-slate-900 font-semibold shadow-[0_0_10px_rgba(250,204,21,0.6)]"
-                    : "text-slate-300 hover:text-slate-100"
-                }`}
-              >
-                Standard
-              </button>
-              <button
-                onClick={() => setMetricMode("mm")}
-                className={`px-3 py-1 rounded-full text-[11px] sm:text-xs transition ${
-                  metricMode === "mm"
-                    ? "bg-yellow-400 text-slate-900 font-semibold shadow-[0_0_10px_rgba(250,204,21,0.6)]"
-                    : "text-slate-300 hover:text-slate-100"
-                }`}
-              >
-                MM
-              </button>
-            </div>
-          )}
+          {/* Metric toggle – always visible; clicking also switches to Season view */}
+          <div className="flex items-center bg-slate-900/80 border border-slate-700/80 rounded-full p-1">
+            <button
+              onClick={() => {
+                setViewMode("season");
+                setMetricMode("standard");
+              }}
+              className={`px-3 py-1 rounded-full text-[11px] sm:text-xs transition ${
+                metricMode === "standard"
+                  ? "bg-yellow-400 text-slate-900 font-semibold shadow-[0_0_10px_rgba(250,204,21,0.6)]"
+                  : "text-slate-300 hover:text-slate-100"
+              }`}
+            >
+              Pick&apos;em
+            </button>
+            <button
+              onClick={() => {
+                setViewMode("season");
+                setMetricMode("mm");
+              }}
+              className={`px-3 py-1 rounded-full text-[11px] sm:text-xs transition ${
+                metricMode === "mm"
+                  ? "bg-yellow-400 text-slate-900 font-semibold shadow-[0_0_10px_rgba(250,204,21,0.6)]"
+                  : "text-slate-300 hover:text-slate-100"
+              }`}
+            >
+              MM
+            </button>
+          </div>
 
           {/* Search input */}
           <div className="w-full sm:w-44 md:w-56">
