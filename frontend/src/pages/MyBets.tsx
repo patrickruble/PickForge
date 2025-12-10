@@ -248,6 +248,54 @@ export default function MyBets() {
     };
   }, [filteredAndSortedBets]);
 
+  // 4b) Graded bets + breakdown by sport (based on visible bets)
+  const gradedBets = useMemo(
+    () =>
+      filteredAndSortedBets.filter(
+        (b) => b.status === "won" || b.status === "lost" || b.status === "push"
+      ),
+    [filteredAndSortedBets]
+  );
+
+  const breakdownBySport = useMemo(() => {
+    if (!gradedBets.length) return [] as {
+      sport: string;
+      total: number;
+      wins: number;
+      losses: number;
+      pushes: number;
+      net: number;
+    }[];
+
+    const sportMap = new Map<
+      string,
+      { sport: string; total: number; wins: number; losses: number; pushes: number; net: number }
+    >();
+
+    for (const b of gradedBets) {
+      const key = (b.sport || "other").toUpperCase();
+      if (!sportMap.has(key)) {
+        sportMap.set(key, {
+          sport: key,
+          total: 0,
+          wins: 0,
+          losses: 0,
+          pushes: 0,
+          net: 0,
+        });
+      }
+
+      const entry = sportMap.get(key)!;
+      entry.total += 1;
+      entry.net += b.result_amount;
+      if (b.status === "won") entry.wins += 1;
+      else if (b.status === "lost") entry.losses += 1;
+      else if (b.status === "push") entry.pushes += 1;
+    }
+
+    return Array.from(sportMap.values()).sort((a, b) => b.total - a.total);
+  }, [gradedBets]);
+
   // 5) Form handlers
   function updateField<K extends keyof NewBetForm>(key: K, value: string) {
     setForm((prev) => ({ ...prev, [key]: value }));
@@ -541,7 +589,12 @@ export default function MyBets() {
               }
             >
               {summary.net >= 0 ? "+" : ""}
-              {summary.net.toFixed(2)}
+              ${summary.net.toFixed(2)}
+              {unitSize > 0 && (
+                <span className="ml-1 text-[11px] text-slate-400">
+                  ({(summary.net / unitSize).toFixed(2)}u)
+                </span>
+              )}
             </div>
           </div>
           <div className="bg-slate-900/80 border border-slate-700 rounded-xl px-3 py-2">
@@ -690,6 +743,124 @@ export default function MyBets() {
             </div>
           </div>
         </div>
+      </section>
+
+      {/* Betting breakdown based on current filters */}
+      <section className="mb-4 bg-slate-950/80 border border-slate-800 rounded-2xl p-3 sm:p-4">
+        <div className="flex items-center justify-between mb-2">
+          <h2 className="text-sm font-semibold text-slate-100">
+            Betting breakdown
+          </h2>
+          <p className="text-[10px] text-slate-500">
+            Based on {filteredAndSortedBets.length} visible bet
+            {filteredAndSortedBets.length === 1 ? "" : "s"} (
+            {gradedBets.length} graded)
+          </p>
+        </div>
+
+        {!gradedBets.length ? (
+          <p className="text-xs text-slate-500">
+            Once you have graded bets in this view, you&apos;ll see your
+            breakdown by sport here.
+          </p>
+        ) : (
+          <>
+            {/* Quick summary using current filters */}
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-3 text-xs">
+              <div className="bg-slate-900/70 rounded-lg p-2 border border-slate-800">
+                <p className="text-[10px] uppercase tracking-wide text-slate-500">
+                  Record (graded)
+                </p>
+                <p className="text-sm font-semibold text-slate-100">
+                  {summary.wins}-{summary.losses}
+                  {summary.pushes ? `-${summary.pushes}` : ""}{" "}
+                  <span className="text-[11px] text-slate-400">
+                    {summary.total > 0
+                      ? `(${((summary.wins / summary.total) * 100).toFixed(1)}%)`
+                      : ""}
+                  </span>
+                </p>
+              </div>
+
+              <div className="bg-slate-900/70 rounded-lg p-2 border border-slate-800">
+                <p className="text-[10px] uppercase tracking-wide text-slate-500">
+                  Net (filtered)
+                </p>
+                <p className="text-sm font-semibold">
+                  <span
+                    className={
+                      summary.net > 0
+                        ? "text-emerald-400"
+                        : summary.net < 0
+                        ? "text-rose-400"
+                        : "text-slate-100"
+                    }
+                  >
+                    {summary.net >= 0 ? "+" : ""}
+                    ${summary.net.toFixed(2)}
+                  </span>
+                  {unitSize > 0 && (
+                    <span className="text-[11px] text-slate-400 ml-1">
+                      ({(summary.net / unitSize).toFixed(2)}u)
+                    </span>
+                  )}
+                </p>
+              </div>
+
+              <div className="bg-slate-900/70 rounded-lg p-2 border border-slate-800">
+                <p className="text-[10px] uppercase tracking-wide text-slate-500">
+                  Total staked
+                </p>
+                <p className="text-sm font-semibold text-slate-100">
+                  ${summary.staked.toFixed(2)}
+                </p>
+              </div>
+
+              <div className="bg-slate-900/70 rounded-lg p-2 border border-slate-800">
+                <p className="text-[10px] uppercase tracking-wide text-slate-500">
+                  ROI
+                </p>
+                <p className="text-sm font-semibold text-slate-100">
+                  {summary.roi.toFixed(1)}%
+                </p>
+              </div>
+            </div>
+
+            {!!breakdownBySport.length && (
+              <div>
+                <p className="text-[10px] uppercase tracking-wide text-slate-500 mb-1">
+                  By sport
+                </p>
+                <div className="flex flex-wrap gap-2 text-[11px]">
+                  {breakdownBySport.map((s) => (
+                    <div
+                      key={s.sport}
+                      className="px-2 py-1 rounded-full border border-slate-700 bg-slate-900/80"
+                    >
+                      <span className="font-semibold text-slate-100">
+                        {s.sport}
+                      </span>{" "}
+                      {s.wins}-{s.losses}
+                      {s.pushes ? `-${s.pushes}` : ""} ·{" "}
+                      <span
+                        className={
+                          s.net > 0
+                            ? "text-emerald-400"
+                            : s.net < 0
+                            ? "text-rose-400"
+                            : "text-slate-200"
+                        }
+                      >
+                        {s.net >= 0 ? "+" : ""}
+                        ${s.net.toFixed(2)}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </>
+        )}
       </section>
 
       {/* Form */}
