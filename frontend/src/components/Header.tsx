@@ -93,11 +93,20 @@ export default function Header() {
     };
   }, []);
 
+  // Text label shown in the top-right chip
   const displayName = useMemo(() => {
     if (username && username.trim()) return `@${username.trim()}`;
     if (email) return email.split("@")[0];
     return null;
   }, [username, email]);
+
+  // URL slug for profile links: username (normalized) → id fallback
+  const profileSlug = useMemo(() => {
+    if (username && username.trim()) {
+      return username.trim().toLowerCase().replace(/\s+/g, "");
+    }
+    return userId ?? null;
+  }, [username, userId]);
 
   const handleLogout = async () => {
     await supabase.auth.signOut();
@@ -110,7 +119,7 @@ export default function Header() {
         <>
           {/* Avatar + name → go to user profile */}
           <Link
-            to={`/u/${userId}`}
+            to={profileSlug ? `/u/${profileSlug}` : "/leaderboard"}
             className="flex items-center gap-2 px-2 py-1 rounded bg-slate-800 border border-slate-700 hover:bg-slate-700 text-[11px] sm:text-xs"
             title="View profile"
           >
@@ -122,7 +131,7 @@ export default function Header() {
                   className="w-full h-full object-cover"
                 />
               ) : (
-                displayName.replace("@", "")[0]?.toUpperCase()
+                (displayName.replace("@", "")[0] ?? "?").toUpperCase()
               )}
             </div>
             <span className="truncate max-w-[110px] sm:max-w-none">
@@ -223,13 +232,13 @@ export default function Header() {
               </NavLink>
 
               <NavLink
-  to="/bets"
-  className={({ isActive }) =>
-    isActive ? "text-white" : "hover:text-white"
-  }
->
-  Bet Tracker
-</NavLink>
+                to="/bets"
+                className={({ isActive }) =>
+                  isActive ? "text-white" : "hover:text-white"
+                }
+              >
+                Bet Tracker
+              </NavLink>
             </>
           )}
         </nav>

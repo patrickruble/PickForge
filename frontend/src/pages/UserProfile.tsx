@@ -78,7 +78,6 @@ function FollowButton({
 
     try {
       if (!isFollowing) {
-        // FOLLOW
         const { error } = await supabase.from(FOLLOW_TABLE).insert({
           [FOLLOWER_COL]: viewerId,
           [FOLLOWING_COL]: profileId,
@@ -90,7 +89,6 @@ function FollowButton({
           onChange();
         }
       } else {
-        // UNFOLLOW
         const { error } = await supabase
           .from(FOLLOW_TABLE)
           .delete()
@@ -149,7 +147,7 @@ export default function UserProfile() {
   const [following, setFollowing] = useState<BasicProfile[]>([]);
   const [followLoading, setFollowLoading] = useState(false);
   const [followError, setFollowError] = useState<string | null>(null);
-  const [followVersion, setFollowVersion] = useState(0); // bump to reload
+  const [followVersion, setFollowVersion] = useState(0);
 
   // Logged-in user, so we know if this is "my" profile
   useEffect(() => {
@@ -171,19 +169,21 @@ export default function UserProfile() {
     };
   }, []);
 
-  // Load profile info (lookup by id OR username)
+  // Load profile info (lookup by id OR username, case-insensitive on username)
   useEffect(() => {
     if (!slug) return;
     let cancelled = false;
 
     async function loadProfile() {
       setProfileLoading(true);
+
       const { data, error } = await supabase
         .from("profiles")
         .select(
           "id, username, avatar_url, created_at, bio, favorite_team, social_url"
         )
-        .or(`id.eq.${slug},username.eq.${slug}`)
+        // Match either the id OR the username (case-insensitive)
+        .or(`id.eq.${slug},username.ilike.${slug}`)
         .maybeSingle();
 
       if (cancelled) return;
@@ -224,7 +224,7 @@ export default function UserProfile() {
       ? new Date(profile.created_at).toLocaleDateString()
       : null;
 
-  // Load followers + following for this profile (using follower_id / following_id schema)
+  // Load followers + following
   useEffect(() => {
     const userId = profile?.id;
     if (!userId) return;
@@ -236,7 +236,6 @@ export default function UserProfile() {
       setFollowError(null);
 
       try {
-        // who follows me, and who I follow
         const [
           { data: followerRows, error: followerError },
           { data: followingRows, error: followingError },
@@ -432,7 +431,6 @@ export default function UserProfile() {
     );
   }
 
-  // Only treat "not found" as "no profile"
   if (!slug || !profile) {
     return (
       <div className="min-h-[60vh] flex items-center justify-center text-slate-300">
@@ -462,7 +460,7 @@ export default function UserProfile() {
       ? `${stats.wins}-${stats.losses}${
           stats.pushes ? `-${stats.pushes}` : ""
         }`
-      : "0-1"; // your default
+      : "0-1";
   const streakLabel =
     stats && stats.totalPicks > 0
       ? formatStreak(stats.currentStreakType, stats.currentStreakLen)
@@ -536,7 +534,6 @@ export default function UserProfile() {
             </button>
           )}
 
-          {/* Follow pill – only when viewing someone else */}
           {profile &&
             currentUserId &&
             profile.id !== currentUserId && (
@@ -672,7 +669,7 @@ export default function UserProfile() {
             ) : !profileBets.length ? (
               <p className="text-xs text-slate-500">
                 No public bets to show. This player may keep their bet log
-                private or hasn&apos;t logged anything yet.
+                private or has not logged anything yet.
               </p>
             ) : (
               <div className="overflow-x-auto rounded-xl border border-slate-800 bg-slate-950/70 mt-2">

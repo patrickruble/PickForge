@@ -42,8 +42,25 @@ function safePct(numerator: number, denominator: number): number {
   return numerator / denominator;
 }
 
+// Treat ONLY clearly-final states as final
+function isGameFinal(status: string | null): boolean {
+  if (!status) return false;
+  const s = status.toLowerCase();
+
+  // adjust these to match whatever values your games table actually uses
+  return (
+    s === "final" ||
+    s === "finished" ||
+    s === "complete" ||
+    s === "completed" ||
+    s === "closed" ||
+    s === "fulltime"
+  );
+}
+
 function gradePick(row: PickRow, game: GameRow | undefined | null): Grade {
-  if (!game || game.status !== "final") return "pending";
+  // Do NOT grade anything that isn't final yet
+  if (!game || !isGameFinal(game.status)) return "pending";
 
   const home = game.home_score;
   const away = game.away_score;
@@ -132,6 +149,8 @@ export function useAllUserStats(): {
         for (const p of picks) {
           const game = gameMap.get(p.game_id);
           const grade = gradePick(p, game);
+
+          // only FINAL games reach here as win/loss/push
           if (grade === "pending") continue;
 
           if (!byUser[p.user_id]) {

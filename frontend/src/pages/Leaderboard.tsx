@@ -49,7 +49,7 @@ type LeaderItem = {
 
 type Grade = "pending" | "win" | "loss" | "push";
 
-const LEAGUE: League = "nfl";
+const league: League = "nfl";
 const MIN_WEEK = 1;
 const MAX_WEEK = 18;
 
@@ -64,14 +64,12 @@ function gradePick(row: PickWithGame): Grade {
   const pickedScore = row.side === "home" ? home : away;
   const otherScore = row.side === "home" ? away : home;
 
-  // Moneyline or missing spread → straight-up winner
   if (row.picked_price_type === "ml" || row.picked_price == null) {
     if (pickedScore > otherScore) return "win";
     if (pickedScore < otherScore) return "loss";
     return "push";
   }
 
-  // Against the spread: picked_price is line on picked side
   const spread = row.picked_price;
   const spreadDiff = pickedScore + spread - otherScore;
   if (spreadDiff > 0) return "win";
@@ -80,60 +78,52 @@ function gradePick(row: PickWithGame): Grade {
 }
 
 export default function Leaderboard() {
-  // What the helper thinks “current NFL week” is
   const currentWeek = useMemo(() => getNflWeekNumber(new Date()), []);
+  const [selectedWeek, setSelectedWeek] = useState(currentWeek);
+  const isCurrentWeek = selectedWeek === currentWeek;
 
-  // Week the user is actually viewing
-  const [selectedWeek, setSelectedWeek] = useState<number>(currentWeek);
-
-  // SEO uses current week (not the selected one) so the title is stable
   usePageSeo({
-    title: `PickForge — NFL Week ${currentWeek} Pick’em Leaderboard & Season Standings`,
+    title: `PickForge — NFL Week ${selectedWeek} Pick’em Leaderboard & Season Standings`,
     description:
       "Check the PickForge NFL pick’em leaderboard for this week and the full season. Track wins, losses, pushes, and win rate for every player.",
   });
 
   const [rows, setRows] = useState<PickWithGame[]>([]);
   const [loading, setLoading] = useState(true);
-
   const [profilesMap, setProfilesMap] = useState<Record<string, ProfileInfo>>(
     {}
   );
 
-  const [viewMode, setViewMode] = useState<"week" | "season">("week");
+  // CHANGE: default to "season" so the page always shows all-time first
+  const [viewMode, setViewMode] = useState<"week" | "season">("season");
+
   const [searchTerm, setSearchTerm] = useState("");
 
   const { statsByUser, loading: statsLoading } = useAllUserStats();
 
-  // Only compute the date window for the *current* week, since
-  // currentNflWeekWindow takes a Date and not a week number.
-  const currentWeekWindow = useMemo(() => {
+  const weekWindow = useMemo(() => {
+    if (!isCurrentWeek) return null;
     const { weekStart, weekEnd } = currentNflWeekWindow(new Date());
     const fmt: Intl.DateTimeFormatOptions = { month: "short", day: "numeric" };
     return `${weekStart.toLocaleDateString(
       undefined,
       fmt
     )} – ${weekEnd.toLocaleDateString(undefined, fmt)}`;
-  }, []);
+  }, [isCurrentWeek]);
 
-  const showWeekWindow =
-    selectedWeek === currentWeek ? currentWeekWindow : null;
-
-  // Load picks + games for the selected week
   useEffect(() => {
     let cancelled = false;
 
-    async function loadForWeek(weekToLoad: number) {
+    async function load() {
       setLoading(true);
 
-      // Picks for this week
       const { data: pickData, error: pickError } = await supabase
         .from("picks")
         .select(
           "user_id, game_id, week, league, side, picked_price_type, picked_price"
         )
-        .eq("league", LEAGUE)
-        .eq("week", weekToLoad);
+        .eq("league", league)
+        .eq("week", selectedWeek);
 
       if (pickError) {
         console.error("[Leaderboard] picks load error:", pickError);
@@ -146,12 +136,11 @@ export default function Leaderboard() {
 
       const picks = (pickData ?? []) as PickRow[];
 
-      // Games for this week
       const { data: gameData, error: gameError } = await supabase
         .from("games")
         .select("id, status, home_score, away_score, week, league")
-        .eq("league", LEAGUE)
-        .eq("week", weekToLoad);
+        .eq("league", league)
+        .eq("week", selectedWeek);
 
       if (gameError) {
         console.error("[Leaderboard] games load error:", gameError);
@@ -172,15 +161,14 @@ export default function Leaderboard() {
       }
     }
 
-    loadForWeek(selectedWeek);
+    load();
 
-    // Realtime updates for this specific week
     const channel = supabase
-      .channel(`leaderboard-${LEAGUE}-week-${selectedWeek}`)
+      .channel(`leaderboard-${league}-${selectedWeek}`)
       .on(
         "postgres_changes",
         { event: "*", schema: "public", table: "picks" },
-        () => loadForWeek(selectedWeek)
+        () => load()
       )
       .subscribe();
 
@@ -190,7 +178,6 @@ export default function Leaderboard() {
     };
   }, [selectedWeek]);
 
-  // Weekly aggregated leaderboard
   const weekAggregated: LeaderItem[] = useMemo(() => {
     const stats = new Map<string, LeaderItem>();
 
@@ -236,7 +223,6 @@ export default function Leaderboard() {
     return list.slice(0, 100);
   }, [rows, profilesMap]);
 
-  // Season aggregated leaderboard from useAllUserStats
   const seasonAggregated: LeaderItem[] = useMemo(() => {
     const list: LeaderItem[] = [];
 
@@ -262,7 +248,6 @@ export default function Leaderboard() {
     return list.slice(0, 100);
   }, [statsByUser, profilesMap]);
 
-  // For loading profiles, consider both week and season users
   const allAggregatedForProfiles: LeaderItem[] = useMemo(() => {
     const map = new Map<string, LeaderItem>();
     for (const item of weekAggregated) map.set(item.user_id, item);
@@ -272,7 +257,6 @@ export default function Leaderboard() {
     return Array.from(map.values());
   }, [weekAggregated, seasonAggregated]);
 
-  // Load profiles for any user ids we do not know yet
   useEffect(() => {
     const unknownIds = allAggregatedForProfiles
       .filter((i) => profilesMap[i.user_id] === undefined)
@@ -321,7 +305,6 @@ export default function Leaderboard() {
   const activeAggregated =
     viewMode === "week" ? weekAggregated : seasonAggregated;
 
-  // Filtered list based on search term
   const filteredAggregated: LeaderItem[] = useMemo(() => {
     const term = searchTerm.trim().toLowerCase();
     if (!term) return activeAggregated;
@@ -336,7 +319,8 @@ export default function Leaderboard() {
       const handle = baseLabel.toLowerCase().replace(/\s+/g, "");
 
       return (
-        baseLabel.toLowerCase().includes(term) || handle.includes(term)
+        baseLabel.toLowerCase().includes(term) ||
+        handle.includes(term)
       );
     });
   }, [activeAggregated, searchTerm]);
@@ -348,10 +332,6 @@ export default function Leaderboard() {
 
   const isWeekView = viewMode === "week";
 
-  const canGoPrevWeek = selectedWeek > MIN_WEEK;
-  const canGoNextWeek = selectedWeek < MAX_WEEK;
-
-  // Loading / empty states
   if (isWeekView && loading && !rows.length) {
     return (
       <div className="px-4 py-8 max-w-4xl mx-auto font-sans">
@@ -360,7 +340,7 @@ export default function Leaderboard() {
         </h1>
         <p className="text-xs sm:text-sm text-slate-400 mb-4">
           NFL Week {selectedWeek}
-          {showWeekWindow ? ` · ${showWeekWindow}` : ""}
+          {weekWindow ? ` · ${weekWindow}` : ""}
         </p>
         <div className="space-y-2">
           {[0, 1, 2, 3].map((i) => (
@@ -383,7 +363,7 @@ export default function Leaderboard() {
         <p className="text-xs sm:text-sm text-slate-400 mb-4">
           {isWeekView
             ? `NFL Week ${selectedWeek}${
-                showWeekWindow ? ` · ${showWeekWindow}` : ""
+                weekWindow ? ` · ${weekWindow}` : ""
               }`
             : "Season Leaderboard"}
         </p>
@@ -398,7 +378,6 @@ export default function Leaderboard() {
     );
   }
 
-  // Main UI
   return (
     <section className="px-3 py-5 sm:px-4 sm:py-6 max-w-4xl mx-auto font-sans">
       <header className="mb-4 sm:mb-5 flex flex-col sm:flex-row sm:items-end sm:justify-between gap-3">
@@ -409,13 +388,12 @@ export default function Leaderboard() {
           <p className="text-xs sm:text-sm text-slate-400 mt-1">
             {isWeekView
               ? `NFL Week ${selectedWeek}${
-                  showWeekWindow ? ` · ${showWeekWindow}` : ""
+                  weekWindow ? ` · ${weekWindow}` : ""
                 }`
               : "Season results across all finished weeks"}
           </p>
         </div>
-
-        <div className="flex flex-wrap gap-2 text-[11px] sm:text-xs text-slate-300 items-center">
+        <div className="flex flex-wrap gap-2 text-[11px] sm:text-xs text-slate-300 items-center justify-end">
           <div className="px-2.5 py-1 rounded-full bg-slate-900/80 border border-slate-700/80">
             <span className="font-semibold text-slate-100">
               {totalPlayers}
@@ -423,42 +401,44 @@ export default function Leaderboard() {
             players
           </div>
 
-          {/* Week selector */}
-          <div className="flex items-center bg-slate-900/80 border border-slate-700/80 rounded-full px-1 py-0.5">
+          <div className="flex items-center bg-slate-900/80 border border-slate-700/80 rounded-full overflow-hidden">
             <button
               type="button"
-              disabled={!canGoPrevWeek}
               onClick={() =>
                 setSelectedWeek((w) => Math.max(MIN_WEEK, w - 1))
               }
-              className={`px-2 py-1 rounded-full text-[11px] sm:text-xs ${
-                canGoPrevWeek
-                  ? "text-slate-300 hover:text-slate-100"
-                  : "text-slate-600 cursor-not-allowed"
-              }`}
+              disabled={!isWeekView || selectedWeek <= MIN_WEEK}
+              className="px-2 py-1 text-[11px] sm:text-xs text-slate-300 disabled:opacity-40 hover:text-slate-100"
             >
-              Prev
+              ◀
             </button>
-            <span className="px-2 text-[11px] sm:text-xs text-slate-400">
+            <span className="px-2 py-1 text-[11px] sm:text-xs text-slate-200">
               Week {selectedWeek}
             </span>
             <button
               type="button"
-              disabled={!canGoNextWeek}
               onClick={() =>
                 setSelectedWeek((w) => Math.min(MAX_WEEK, w + 1))
               }
-              className={`px-2 py-1 rounded-full text-[11px] sm:text-xs ${
-                canGoNextWeek
-                  ? "text-slate-300 hover:text-slate-100"
-                  : "text-slate-600 cursor-not-allowed"
-              }`}
+              disabled={!isWeekView || selectedWeek >= MAX_WEEK}
+              className="px-2 py-1 text-[11px] sm:text-xs text-slate-300 disabled:opacity-40 hover:text-slate-100"
             >
-              Next
+              ▶
             </button>
           </div>
 
-          {/* View toggle */}
+          <button
+            type="button"
+            onClick={() => {
+              setViewMode("week");
+              setSelectedWeek(currentWeek);
+            }}
+            disabled={!isWeekView && selectedWeek === currentWeek}
+            className="px-2.5 py-1 rounded-full bg-slate-900/80 border border-slate-700/80 text-[11px] sm:text-xs text-slate-300 hover:text-slate-100 disabled:opacity-40"
+          >
+            This week
+          </button>
+
           <div className="flex items-center bg-slate-900/80 border border-slate-700/80 rounded-full p-1">
             <button
               onClick={() => setViewMode("week")}
@@ -482,7 +462,6 @@ export default function Leaderboard() {
             </button>
           </div>
 
-          {/* Search input */}
           <div className="w-full sm:w-44 md:w-56">
             <input
               type="text"
@@ -560,17 +539,13 @@ export default function Leaderboard() {
             ? weekWinPctText
             : seasonWinPctText;
 
-          const slug = username && username.trim().length > 0
-            ? username.trim()
-            : item.user_id;
-
           return (
             <li
               key={item.user_id}
               className={`rounded-2xl bg-slate-900/80 border ${rankStyles} px-3 py-2 sm:px-4 sm:py-3 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 sm:gap-3`}
             >
               <Link
-                to={`/u/${slug}`}
+                to={`/u/${item.user_id}`}
                 className="flex items-center gap-3 min-w-0 flex-shrink-0 hover:opacity-90 transition"
               >
                 <div className="w-7 text-[11px] font-semibold text-slate-500 text-right">
@@ -623,7 +598,7 @@ export default function Leaderboard() {
       </ol>
 
       <p className="text-[11px] text-slate-500 mt-4">
-        Week view grades records from the selected NFL week only. Season view
+        Week view grades records for the selected NFL week only. Season view
         combines all finished games across the year using your saved spread or
         moneyline at pick time.
       </p>

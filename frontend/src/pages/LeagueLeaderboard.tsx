@@ -171,8 +171,7 @@ export default function LeagueLeaderboard() {
       const wins = s?.wins ?? 0;
       const losses = s?.losses ?? 0;
       const pushes = s?.pushes ?? 0;
-      const winRate =
-        totalPicks > 0 ? Number(s!.winRate.toFixed(1)) : 0.0;
+      const winRate = totalPicks > 0 ? Number(s!.winRate.toFixed(1)) : 0.0;
       const streakType = s?.currentStreakType ?? null;
       const streakLen = s?.currentStreakLen ?? 0;
 
@@ -294,7 +293,9 @@ export default function LeagueLeaderboard() {
         </p>
         <p className="text-[11px] text-slate-500 mt-1">
           Invite code:{" "}
-          <span className="font-mono text-yellow-300">{league.invite_code}</span>
+          <span className="font-mono text-yellow-300">
+            {league.invite_code}
+          </span>
         </p>
         <button
           onClick={() => nav("/leagues")}
@@ -307,7 +308,7 @@ export default function LeagueLeaderboard() {
       {rows.length === 0 ? (
         <p className="text-sm text-slate-400">
           No members with graded picks yet. Once people have picks on the
-          season, they’ll appear here.
+          season, they will appear here.
         </p>
       ) : (
         <div className="overflow-hidden rounded-2xl border border-slate-800 bg-slate-950/80">
@@ -327,6 +328,19 @@ export default function LeagueLeaderboard() {
             <tbody>
               {rows.map((r, idx) => {
                 const isMe = meId && r.user_id === meId;
+
+                const hasUsername =
+                  r.username && r.username.trim().length > 0;
+                const displayName = hasUsername
+                  ? r.username!.trim()
+                  : `user_${r.user_id.slice(0, 6)}`;
+                const profileSlug = hasUsername
+                  ? r.username!.trim()
+                  : r.user_id;
+                const handle = `@${displayName
+                  .toLowerCase()
+                  .replace(/\s+/g, "")}`;
+
                 const record =
                   r.totalPicks > 0
                     ? `${r.wins}-${r.losses}${
@@ -335,14 +349,6 @@ export default function LeagueLeaderboard() {
                     : "0-0";
                 const winPct =
                   r.totalPicks > 0 ? `${r.winRate.toFixed(1)}%` : "—";
-                const name =
-                  r.username && r.username.trim().length > 0
-                    ? r.username.trim()
-                    : `user_${r.user_id.slice(0, 6)}`;
-                const slug =
-                  r.username && r.username.trim().length > 0
-                    ? r.username.trim()
-                    : r.user_id;
                 const streakLabel =
                   r.totalPicks > 0
                     ? formatStreak(r.streakType, r.streakLen)
@@ -365,22 +371,23 @@ export default function LeagueLeaderboard() {
                           {r.avatar_url ? (
                             <img
                               src={r.avatar_url}
-                              alt={name}
+                              alt={displayName}
                               className="w-full h-full object-cover"
                             />
                           ) : (
-                            name[0]?.toUpperCase()
+                            displayName[0]?.toUpperCase()
                           )}
                         </div>
                         <div className="flex flex-col">
                           <Link
-                            to={`/u/${slug}`}
+                            to={`/u/${profileSlug}`}
                             className="text-slate-100 hover:text-yellow-300 text-sm"
                           >
-                            {name}
+                            {displayName}
                           </Link>
-                          <span className="text-[10px] text-slate-500 capitalize">
-                            {r.role}
+                          <span className="text-[10px] text-slate-500">
+                            {handle} ·{" "}
+                            <span className="capitalize">{r.role}</span>
                             {isMe ? " • You" : ""}
                           </span>
                         </div>
@@ -408,7 +415,7 @@ export default function LeagueLeaderboard() {
 
       {myRowIndex >= 0 && (
         <p className="mt-3 text-[11px] text-slate-500">
-          You’re currently{" "}
+          You are currently{" "}
           <span className="text-yellow-300 font-semibold">
             #{myRowIndex + 1}
           </span>{" "}
