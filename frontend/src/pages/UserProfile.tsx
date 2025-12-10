@@ -347,26 +347,55 @@ export default function UserProfile() {
     };
   }, [profile?.id, followVersion]);
 
-  // Season rank for this user (optional)
+  // Season rank for this user (tie-aware, matching leaderboard logic)
   const { seasonRank, totalPlayers } = useMemo(() => {
     if (!statsUserId) {
       return { seasonRank: null as number | null, totalPlayers: 0 };
     }
 
+    // Only players with graded picks count toward the season leaderboard
     const entries = Object.entries(statsByUser).filter(
       ([, s]) => s.totalPicks > 0
     );
 
+    if (!entries.length) {
+      return { seasonRank: null as number | null, totalPlayers: 0 };
+    }
+
+    // Sort the same way as the season leaderboard “standard” mode:
+    // winRate desc, then wins desc, then losses asc, then pushes desc.
     entries.sort((a, b) => {
       const sa = a[1];
       const sb = b[1];
+
       if (sb.winRate !== sa.winRate) return sb.winRate - sa.winRate;
-      return sb.wins - sa.wins;
+      if (sb.wins !== sa.wins) return sb.wins - sa.wins;
+      if (sb.losses !== sa.losses) return sa.losses - sb.losses;
+      return (sb.pushes ?? 0) - (sa.pushes ?? 0);
     });
 
-    const index = entries.findIndex(([id]) => id === statsUserId);
+    // Tie-aware ranking: same stats share rank; next rank skips.
+    let currentRank = 0;
+    let itemsSeen = 0;
+    let prevKey: string | null = null;
+    const rankMap = new Map<string, number>();
+
+    for (const [id, s] of entries) {
+      const key = `${s.winRate}|${s.wins}|${s.losses}|${s.pushes ?? 0}`;
+
+      if (prevKey === null) {
+        currentRank = 1;
+      } else if (key !== prevKey) {
+        currentRank = itemsSeen + 1;
+      }
+
+      rankMap.set(id, currentRank);
+      itemsSeen += 1;
+      prevKey = key;
+    }
+
     return {
-      seasonRank: index >= 0 ? index + 1 : null,
+      seasonRank: rankMap.get(statsUserId) ?? null,
       totalPlayers: entries.length,
     };
   }, [statsUserId, statsByUser]);
