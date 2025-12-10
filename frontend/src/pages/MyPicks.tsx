@@ -196,14 +196,27 @@ export default function MyPicks() {
 
   const weekNum = getNflWeekNumber(new Date());
 
+  // True ML picks (used for MM stats/count)
+  const mlRows = useMemo(
+    () =>
+      rows.filter(
+        (r) => r.picked_price_type === "ml" && r.picked_price != null
+      ),
+    [rows]
+  );
+
+  // What we actually show in the list:
+  // - All picks in "All" mode
+  // - Only ML picks in "MM" mode when there are any
+  // - Fallback to all picks in "MM" mode when there are zero ML picks (so page isn't empty)
   const visibleRows = useMemo(
     () =>
       mode === "all"
         ? rows
-        : rows.filter(
-            (r) => r.picked_price_type === "ml" && r.picked_price != null
-          ),
-    [mode, rows]
+        : mlRows.length > 0
+        ? mlRows
+        : rows,
+    [mode, rows, mlRows]
   );
 
   // -------- Loading state --------
@@ -275,7 +288,12 @@ export default function MyPicks() {
             <span className="font-semibold text-slate-100">
               {visibleRows.length}
             </span>{" "}
-            {mode === "all" ? "picks locked in." : "ML picks (Moneyline Mastery)."}
+            picks locked in.
+            {mode === "mm" && (
+              <span className="ml-1 text-slate-500">
+                ({mlRows.length} ML picks for Moneyline Mastery.)
+              </span>
+            )}
           </div>
           <div className="flex items-center bg-slate-900/80 border border-slate-700/80 rounded-full p-1">
             <button
