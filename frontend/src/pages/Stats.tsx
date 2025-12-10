@@ -211,6 +211,39 @@ export default function Stats() {
     [rows]
   );
 
+  // Unique list of weeks (most recent first)
+  const weeks = useMemo(() => {
+    const set = new Set<number>();
+    for (const p of gradedRows) {
+      const w = p.game?.week ?? p.week;
+      if (typeof w === "number") {
+        set.add(w);
+      }
+    }
+    return Array.from(set).sort((a, b) => b - a);
+  }, [gradedRows]);
+
+  // Selected week for detailed breakdown (defaults to most recent)
+  const [selectedWeek, setSelectedWeek] = useState<number | null>(null);
+
+  useEffect(() => {
+    if (!weeks.length) return;
+    if (selectedWeek === null) {
+      setSelectedWeek(weeks[0]);
+    }
+  }, [weeks, selectedWeek]);
+
+  // Picks visible in the breakdown table for the selected week
+  const visiblePicks = useMemo(
+    () =>
+      selectedWeek === null
+        ? gradedRows
+        : gradedRows.filter(
+            (p) => (p.game?.week ?? p.week) === selectedWeek
+          ),
+    [gradedRows, selectedWeek]
+  );
+
   if (loading) {
     return (
       <div className="min-h-[60vh] flex items-center justify-center text-slate-300">
@@ -355,10 +388,30 @@ export default function Stats() {
 
       {/* Detailed picks table */}
       <div className="bg-slate-900/70 rounded-xl border border-slate-700 p-6">
-        <h2 className="text-lg font-semibold mb-3">Pick breakdown</h2>
+        <div className="flex items-center justify-between gap-3 mb-3">
+          <h2 className="text-lg font-semibold">Pick breakdown</h2>
+          {weeks.length > 0 && selectedWeek !== null && (
+            <div className="flex items-center gap-2 text-[11px] sm:text-xs text-slate-300">
+              <span className="text-slate-400">Week:</span>
+              <select
+                aria-label="Select week for pick breakdown"
+                value={selectedWeek}
+                onChange={(e) => setSelectedWeek(Number(e.target.value))}
+                className="bg-slate-900 border border-slate-700 rounded-full px-2 py-1 text-[11px] sm:text-xs text-slate-100 focus:outline-none focus:ring-1 focus:ring-yellow-400"
+              >
+                {weeks.map((w) => (
+                  <option key={w} value={w}>
+                    Week {w}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
+        </div>
         <p className="text-xs text-slate-400 mb-3">
-          Includes all your NFL picks. Result and "Covered" are only shown once
-          a game is final.
+          Viewing picks for{" "}
+          {selectedWeek !== null ? `Week ${selectedWeek}` : "recent weeks"}.
+          Result and "Covered" are only shown once a game is final.
         </p>
 
         <div className="overflow-x-auto">
@@ -376,7 +429,7 @@ export default function Stats() {
               </tr>
             </thead>
             <tbody>
-              {gradedRows.map((p) => {
+              {visiblePicks.map((p) => {
                 const g = gradePick(p);
                 const game = p.game;
                 const week = game?.week ?? p.week;
