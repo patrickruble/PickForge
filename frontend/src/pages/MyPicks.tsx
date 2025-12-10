@@ -42,8 +42,29 @@ type PickWithGame = PickRow & {
 
 type Grade = "pending" | "win" | "loss" | "push";
 
+
 const fmtSigned = (n: number | null | undefined) =>
   typeof n === "number" ? (n > 0 ? `+${n}` : `${n}`) : "—";
+
+// Compute risk and win for a standard 100-point MM stake based on American odds
+const computeRiskWinFromOdds = (odds: number, stake = 100) => {
+  if (!Number.isFinite(odds) || odds === 0) {
+    return { risk: 0, win: 0 };
+  }
+  if (odds > 0) {
+    // Underdog: risk stake to win odds% of stake
+    return {
+      risk: stake,
+      win: (stake * odds) / 100,
+    };
+  }
+  // Favorite: risk abs(odds)% of stake to win stake
+  const abs = Math.abs(odds);
+  return {
+    risk: (stake * abs) / 100,
+    win: stake,
+  };
+};
 
 // Same grading logic as Stats: uses final score + the line you locked in
 function gradePick(row: PickWithGame): Grade {
@@ -335,6 +356,7 @@ export default function MyPicks() {
           // Prefer saved price; else show current side’s line or snapshot.
           // In MM mode, we always show a moneyline for the picked team if we have one.
           let label = "";
+          let riskWinText = "";
 
           if (mode === "mm") {
             // Moneyline Mastery view: show ML for the side you picked
@@ -387,6 +409,10 @@ export default function MyPicks() {
                     : ""
                 }`;
               }
+            }
+            if (ml != null) {
+              const { risk, win } = computeRiskWinFromOdds(ml, 100);
+              riskWinText = `Max loss: ${risk.toFixed(0)} pts · Max win: ${win.toFixed(0)} pts`;
             }
           } else {
             // Normal view: for Pick'em, prefer the spread you locked in.
@@ -522,6 +548,11 @@ if (grade === "push") {
                   </div>
                   {label && (
                     <div className="text-[11px] text-slate-400">{label}</div>
+                  )}
+                  {mode === "mm" && riskWinText && (
+                    <div className="text-[11px] text-slate-500 mt-0.5">
+                      {riskWinText}
+                    </div>
                   )}
                   <div className="mt-1 text-[11px] text-slate-500">{when}</div>
                 </div>
