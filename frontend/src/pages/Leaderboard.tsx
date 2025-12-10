@@ -644,7 +644,8 @@ export default function Leaderboard() {
                     </>
                   ) : (
                     <>
-                      This week {weekRecordText} · Win {weekWinPctText}
+                      This week {weekRecordText} · Win {weekWinPctText} · Streak{" "}
+                      {seasonStreakText}
                     </>
                   )}
                 </div>
