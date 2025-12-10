@@ -436,11 +436,6 @@ export default function MyBets() {
   }
 
   function startEdit(bet: BetRow) {
-    if (bet.status !== "pending") {
-      alert("Only pending bets can be edited.");
-      return;
-    }
-
     setEditingBet(bet);
     setForm({
       sport: bet.sport || "other",
@@ -1582,13 +1577,8 @@ export default function MyBets() {
                         <button
                           type="button"
                           onClick={() => startEdit(b)}
-                          className="inline-flex items-center px-2 py-1 rounded-full border border-slate-600 text-[11px] text-slate-200 hover:bg-slate-800 disabled:opacity-40"
-                          disabled={b.status !== "pending"}
-                          title={
-                            b.status !== "pending"
-                              ? "Only pending bets can be edited"
-                              : "Edit this bet"
-                          }
+                          className="inline-flex items-center px-2 py-1 rounded-full border border-slate-600 text-[11px] text-slate-200 hover:bg-slate-800"
+                          title="Edit this bet"
                         >
                           Edit
                         </button>
