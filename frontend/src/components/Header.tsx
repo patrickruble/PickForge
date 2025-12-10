@@ -163,8 +163,30 @@ export default function Header() {
       <div className="mx-auto max-w-6xl px-3 sm:px-4 py-2 sm:py-3 space-y-2">
         {/* Row 1: PickForge logo + user bar */}
         <div className="flex items-center justify-between gap-3">
-          <Link to="/" className="pf-logo text-yellow-400">
-            <span className="pf-logo-lock text-[0.6rem] font-bold">🔒</span>
+          <Link to="/" className="pf-logo text-yellow-400 flex items-center gap-2">
+            <span className="pf-logo-lock inline-flex items-center justify-center">
+              <svg
+                width="28"
+                height="28"
+                viewBox="0 0 28 28"
+                xmlns="http://www.w3.org/2000/svg"
+              >
+                {/* Black background */}
+                <rect width="28" height="28" fill="black" rx="6" />
+                {/* Lock shackle */}
+                <path
+                  d="M9 11c0-3.3 2.1-5 5-5s5 1.7 5 5v2h-2v-2c0-2-.9-3-3-3s-3 1-3 3v2H9v-2z"
+                  fill="#facc15"
+                />
+                {/* Anvil base */}
+                <path
+                  d="M6 17h16l-1.8 2.5c-.3.4-.9.7-1.4.7H9.2c-.5 0-1-.3-1.4-.7L6 17z"
+                  fill="#facc15"
+                />
+                {/* Anvil stand */}
+                <rect x="11" y="20" width="6" height="3" rx="1" fill="#facc15" />
+              </svg>
+            </span>
             <span className="pf-logo-text font-display text-xl sm:text-2xl tracking-[0.12em] uppercase">
               PickForge
             </span>
