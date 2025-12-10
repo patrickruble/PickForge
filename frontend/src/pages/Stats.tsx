@@ -86,7 +86,7 @@ export default function Stats() {
       const { data: picksRaw, error: picksError } = await supabase
         .from("picks")
         .select(
-          "id,user_id,league,week,game_id,side,picked_price_type,picked_price,picked_snapshot"
+          "id,user_id,league,week,game_id,side,picked_price_type,picked_price,picked_snapshot,contest_type"
         )
         .eq("user_id", user.id)
         .eq("league", league);
@@ -243,14 +243,21 @@ export default function Stats() {
         : rows.filter((p) => (p.game?.week ?? p.week) === selectedWeek);
 
     if (breakdownMode === "mm") {
-      // Moneyline-only picks (what Moneyline Mastery actually uses)
+      // Moneyline Mastery: only moneyline picks from the MM contest
       return base.filter(
-        (p) => p.picked_price_type === "ml" && p.picked_price != null
+        (p) =>
+          (p as any).contest_type === "mm" &&
+          p.picked_price_type === "ml" &&
+          p.picked_price != null
       );
     }
 
-    // Pick'em view – show all picks for that week (spread + ML)
-    return base;
+    // Pick'em view: only traditional Pick'em contest picks.
+    // Include legacy rows where contest_type is missing or explicitly 'pickem'.
+    return base.filter((p) => {
+      const ct = (p as any).contest_type;
+      return ct === "pickem" || ct == null;
+    });
   }, [rows, selectedWeek, breakdownMode]);
 
   // Count of ML picks for the selected week (used in helper text)
@@ -259,8 +266,12 @@ export default function Stats() {
       selectedWeek === null
         ? rows
         : rows.filter((p) => (p.game?.week ?? p.week) === selectedWeek);
+
     return base.filter(
-      (p) => p.picked_price_type === "ml" && p.picked_price != null
+      (p) =>
+        (p as any).contest_type === "mm" &&
+        p.picked_price_type === "ml" &&
+        p.picked_price != null
     ).length;
   }, [rows, selectedWeek]);
 
