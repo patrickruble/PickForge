@@ -899,6 +899,75 @@ export default function UserProfile() {
         )}
       </div>
 
+      {/* Notifications - new followers */}
+      {isOwnProfile && (
+        <div className="bg-slate-900/70 p-4 rounded-xl border border-slate-700 mb-4">
+          <div className="flex items-center justify-between mb-2">
+            <h2 className="text-sm font-semibold text-slate-100">
+              Notifications
+            </h2>
+            {followLoading && (
+              <span className="text-[11px] text-slate-500">Loading…</span>
+            )}
+          </div>
+
+          {followError && (
+            <p className="text-xs text-rose-400 mb-1">{followError}</p>
+          )}
+
+          {!followLoading && !followers.length && !followError && (
+            <p className="text-xs text-slate-500">
+              No followers yet. When someone follows you, they will appear here.
+            </p>
+          )}
+
+          {!!followers.length && (
+            <ul className="space-y-2 mt-1">
+              {followers.slice(0, 20).map((p) => {
+                const label =
+                  p.username && p.username.trim().length > 0
+                    ? p.username
+                    : `user_${p.id.slice(0, 6)}`;
+
+                const slugForUser =
+                  p.username && p.username.trim().length > 0
+                    ? p.username.trim()
+                    : p.id;
+
+                return (
+                  <li key={p.id}>
+                    <Link
+                      to={`/u/${slugForUser}`}
+                      className="flex items-center gap-3 px-2.5 py-2 rounded-lg bg-slate-800/60 border border-slate-700 hover:border-yellow-400 hover:bg-slate-800/90"
+                    >
+                      <div className="w-7 h-7 rounded-full overflow-hidden bg-slate-700 flex items-center justify-center text-[11px] font-semibold text-slate-100">
+                        {p.avatar_url ? (
+                          <img
+                            src={p.avatar_url}
+                            alt={label}
+                            className="w-full h-full object-cover"
+                          />
+                        ) : (
+                          (label[0] ?? "U").toUpperCase()
+                        )}
+                      </div>
+                      <div className="flex flex-col min-w-0">
+                        <span className="text-sm text-slate-100 truncate">
+                          {label}
+                        </span>
+                        <span className="text-[11px] text-slate-500 truncate">
+                          started following you
+                        </span>
+                      </div>
+                    </Link>
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+        </div>
+      )}
+
       <p className="text-xs text-slate-400">
         Public profiles show season stats plus a snapshot of any bets this
         player chooses to share.
