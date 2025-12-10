@@ -65,9 +65,11 @@ function useSession() {
 export function useRemotePicks() {
   const { ready, userId } = useSession();
   const [picks, setPicks] = useState<PicksMap>({});
+  const [mmPicks, setMmPicks] = useState<PicksMap>({});
   const [loading, setLoading] = useState(true);
 
   const count = useMemo(() => Object.keys(picks).length, [picks]);
+  const mmCount = useMemo(() => Object.keys(mmPicks).length, [mmPicks]);
 
   const isLocked = useCallback((commenceIso: string, nowMs?: number) => {
     const now = nowMs ? new Date(nowMs) : new Date();
@@ -77,7 +79,7 @@ export function useRemotePicks() {
   // Load picks for current week when authenticated
   useEffect(() => {
     if (!ready) return;
-    if (!userId) { setPicks({}); setLoading(false); return; }
+    if (!userId) { setPicks({}); setMmPicks({}); setLoading(false); return; }
 
     const week = getNflWeekNumber(new Date());
     let cancelled = false;
@@ -87,7 +89,7 @@ export function useRemotePicks() {
       try {
         const { data, error } = await supabase
           .from("picks")
-          .select("game_id, side")
+          .select("game_id, side, contest_type")
           .eq("user_id", userId)
           .eq("league", "nfl")
           .eq("week", week);
@@ -95,13 +97,24 @@ export function useRemotePicks() {
         if (error) throw error;
 
         if (!cancelled) {
-          const map: PicksMap = {};
-          for (const row of data ?? []) map[row.game_id] = { side: row.side as PickSide };
-          setPicks(map);
+          const pickemMap: PicksMap = {};
+          const mmMap: PicksMap = {};
+          for (const row of data ?? []) {
+            const contest = (row as any).contest_type as "pickem" | "mm" | null;
+            const side = (row as any).side as PickSide;
+            if (!contest || !side) continue;
+            if (contest === "pickem") pickemMap[(row as any).game_id] = { side };
+            else if (contest === "mm") mmMap[(row as any).game_id] = { side };
+          }
+          setPicks(pickemMap);
+          setMmPicks(mmMap);
         }
       } catch (e) {
         console.error("Load picks error:", e);
-        if (!cancelled) setPicks({});
+        if (!cancelled) {
+          setPicks({});
+          setMmPicks({});
+        }
       } finally {
         if (!cancelled) setLoading(false);
       }
@@ -128,6 +141,7 @@ export function useRemotePicks() {
       opts?: {
         priceType?: "spread" | "ml" | null;
         price?: number | null;
+        contestType?: "pickem" | "mm";
       }
     ) => {
       if (!userId) { alert("Please log in to make picks."); return; }
@@ -135,7 +149,9 @@ export function useRemotePicks() {
       const gameId = game.id;
       const kickoff = new Date(game.commenceTime);
       const week = getNflWeekNumber(kickoff);
-      const already = picks[gameId]?.side === side;
+      const contestType: "pickem" | "mm" = opts?.contestType ?? "pickem";
+      const currentMap = contestType === "mm" ? mmPicks : picks;
+      const already = currentMap[gameId]?.side === side;
 
       const spreadHome = game.spreadHome ?? null;
       const spreadAway = game.spreadAway ?? null;
@@ -176,9 +192,11 @@ export function useRemotePicks() {
       };
 
       const apply = (next: PickSide | null) => {
-        setPicks(prev => {
+        const setMap = contestType === "mm" ? setMmPicks : setPicks;
+        setMap(prev => {
           const cp = { ...prev };
-          if (next) cp[gameId] = { side: next }; else delete cp[gameId];
+          if (next) cp[gameId] = { side: next };
+          else delete cp[gameId];
           return cp;
         });
       };
@@ -192,7 +210,8 @@ export function useRemotePicks() {
             .eq("user_id", userId)
             .eq("league", "nfl")
             .eq("week", week)
-            .eq("game_id", gameId);
+            .eq("game_id", gameId)
+            .eq("contest_type", contestType);
           if (error) throw error;
           return;
         }
@@ -212,23 +231,30 @@ export function useRemotePicks() {
               picked_price_type,
               picked_price,
               picked_snapshot,
+              contest_type: contestType,
             },
-            { onConflict: "user_id,game_id" }
+            {
+              // Match the DB unique constraint: (user_id, game_id, contest_type)
+              onConflict: "user_id,game_id,contest_type",
+            }
           );
         if (error) throw error;
       } catch (err) {
         console.error("Save pick error:", err);
-        // roll back
-        setPicks(prev => {
-          const cp = { ...prev };
-          if (already) cp[gameId] = { side };
-          else delete cp[gameId];
-          return cp;
-        });
+        // roll back local Weekly Pick'em or MM state
+        if (contestType === "pickem" || contestType === "mm") {
+          const setMap = contestType === "mm" ? setMmPicks : setPicks;
+          setMap(prev => {
+            const cp = { ...prev };
+            if (already) cp[gameId] = { side };
+            else delete cp[gameId];
+            return cp;
+          });
+        }
         alert("Failed to save pick.");
       }
     },
-    [userId, picks]
+    [userId, picks, mmPicks]
   );
 
   const clear = useCallback(async () => {
@@ -240,7 +266,8 @@ export function useRemotePicks() {
         .delete()
         .eq("user_id", userId)
         .eq("league", "nfl")
-        .eq("week", week);
+        .eq("week", week)
+        .eq("contest_type", "pickem");
       if (error) throw error;
       setPicks({});
     } catch (e) {
@@ -250,7 +277,9 @@ export function useRemotePicks() {
 
   return {
     picks,
+    mmPicks,
     count,
+    mmCount,
     togglePick,
     clear,
     isLocked,

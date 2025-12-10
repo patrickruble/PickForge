@@ -104,8 +104,16 @@ export default function GameBoard() {
   const { games, isLoading, isValidating, error, refresh } = useLines("nfl");
 
   // Supabase picks – togglePick(game, side)
-  const { picks, count, togglePick, clear, isLocked, isAuthed } =
-    useRemotePicks();
+  const {
+    picks,
+    mmPicks,
+    count,
+    mmCount,
+    togglePick,
+    clear,
+    isLocked,
+    isAuthed,
+  } = useRemotePicks();
 
   // Ticker for countdowns
   const now = useNow(30_000);
@@ -234,7 +242,7 @@ export default function GameBoard() {
           <div className="inline-flex items-center gap-2 text-slate-300">
             <span className="text-slate-400">Picks selected:</span>
             <span className="font-semibold text-yellow-400 font-mono text-sm">
-              {count}
+              {mode === "mm" ? mmCount : count}
             </span>
           </div>
           <div className="flex items-center bg-slate-900/80 border border-slate-700/80 rounded-full p-1">
@@ -284,7 +292,9 @@ export default function GameBoard() {
             disabled={count === 0}
             className="px-3 py-1.5 rounded-full border border-slate-700 text-slate-200 hover:bg-slate-900 disabled:opacity-40 disabled:cursor-not-allowed"
             title={
-              count === 0 ? "No picks to clear" : "Clear all picks for this week"
+              count === 0
+                ? "No Pick'em picks to clear"
+                : "Clear all Pick'em picks for this week"
             }
           >
             Clear all picks
@@ -328,7 +338,9 @@ export default function GameBoard() {
                   {section.map((g) => {
                     const homeML = g.moneyline?.[g.home];
                     const awayML = g.moneyline?.[g.away];
-                    const selectedSide = getSide(picks?.[g.id]);
+                    const pickemSide = getSide(picks?.[g.id]);
+                    const mmSide = getSide(mmPicks?.[g.id]);
+                    const selectedSide = mode === "mm" ? mmSide : pickemSide;
                     const locked = isLocked(g.commenceTime, now);
                     const countdown = fmtCountdown(g.commenceTime, now);
 
@@ -373,6 +385,7 @@ export default function GameBoard() {
                                     mode === "mm"
                                       ? awayML ?? null
                                       : g.spreadAway ?? null,
+                                  contestType: mode === "mm" ? "mm" : "pickem",
                                 });
                               }}
                               disabled={locked || !isAuthed}
@@ -387,9 +400,7 @@ export default function GameBoard() {
                               }
                             >
                               {mode === "mm"
-                                ? isAway
-                                  ? `ML ${fmtOdds(awayML)}`
-                                  : `ML ${fmtOdds(awayML)}`
+                                ? `ML ${fmtOdds(awayML)}`
                                 : isAway
                                 ? "Picked"
                                 : "Pick"}
@@ -436,6 +447,7 @@ export default function GameBoard() {
                                     mode === "mm"
                                       ? homeML ?? null
                                       : g.spreadHome ?? null,
+                                  contestType: mode === "mm" ? "mm" : "pickem",
                                 });
                               }}
                               disabled={locked || !isAuthed}
@@ -450,9 +462,7 @@ export default function GameBoard() {
                               }
                             >
                               {mode === "mm"
-                                ? isHome
-                                  ? `ML ${fmtOdds(homeML)}`
-                                  : `ML ${fmtOdds(homeML)}`
+                                ? `ML ${fmtOdds(homeML)}`
                                 : isHome
                                 ? "Picked"
                                 : "Pick"}
