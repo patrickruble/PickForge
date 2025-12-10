@@ -46,6 +46,8 @@ type LeaderItem = {
   total: number;
   winPct: number; // 0–1 fraction
   profile?: ProfileInfo;
+  streakScore?: number;
+  isCreator?: boolean;
 };
 
 type Grade = "pending" | "win" | "loss" | "push";
@@ -53,6 +55,7 @@ type Grade = "pending" | "win" | "loss" | "push";
 const league: League = "nfl";
 const MIN_WEEK = 1;
 const MAX_WEEK = 18;
+const CREATOR_USERNAME = "ForgeMaster";
 
 function gradePick(row: PickWithGame): Grade {
   const game = row.game;
@@ -246,6 +249,17 @@ export default function Leaderboard() {
     Object.entries(statsByUser).forEach(([user_id, s]) => {
       if (s.totalPicks === 0) return;
 
+      const streakScore =
+        s && s.currentStreakType === "W" && typeof s.currentStreakLen === "number"
+          ? s.currentStreakLen
+          : 0;
+
+      const profile = profilesMap[user_id];
+      const isCreator =
+        !!profile &&
+        typeof profile.username === "string" &&
+        profile.username.trim() === CREATOR_USERNAME;
+
       list.push({
         user_id,
         wins: s.wins,
@@ -254,12 +268,25 @@ export default function Leaderboard() {
         total: s.totalPicks,
         winPct: s.winRate / 100, // convert percent to fraction
         profile: profilesMap[user_id],
+        streakScore,
+        isCreator,
       });
     });
 
     list.sort((a, b) => {
       if (b.winPct !== a.winPct) return b.winPct - a.winPct;
-      return b.wins - a.wins;
+      if (b.wins !== a.wins) return b.wins - a.wins;
+
+      const sa = a.streakScore ?? 0;
+      const sb = b.streakScore ?? 0;
+      if (sb !== sa) return sb - sa;
+
+      const aCreator = !!a.isCreator;
+      const bCreator = !!b.isCreator;
+      if (aCreator && !bCreator) return -1;
+      if (!aCreator && bCreator) return 1;
+
+      return 0;
     });
 
     return list.slice(0, 100);
@@ -411,12 +438,10 @@ export default function Leaderboard() {
         const s = statsByUser[item.user_id];
         if (!s) return false;
 
-        // If we have a Moneyline Mastery value at all, consider this user "entered"
         if (typeof s.moneylineMastery === "number") {
           return true;
         }
 
-        // Otherwise, fall back to any explicit MM pick-count fields if they exist
         const mmCount =
           typeof (s as any).moneylinePicks === "number"
             ? (s as any).moneylinePicks
@@ -426,13 +451,12 @@ export default function Leaderboard() {
 
         return typeof mmCount === "number" && mmCount > 0;
       });
-    }
 
-    if (metricMode === "mm") {
-      // Sort by Moneyline Mastery (desc), then fall back to win% and wins
+      // Sort MM by mastery score, then by standard season standings plus streak/creator tiebreaks
       base.sort((a, b) => {
         const sa = statsByUser[a.user_id];
         const sb = statsByUser[b.user_id];
+
         const ma =
           sa && typeof sa.moneylineMastery === "number"
             ? sa.moneylineMastery
@@ -444,20 +468,43 @@ export default function Leaderboard() {
 
         if (mb !== ma) return mb - ma;
 
-        // Tie-breakers: win% then raw wins
+        // fall back to regular season ordering: win%, wins, streak, creator
         if (b.winPct !== a.winPct) return b.winPct - a.winPct;
-        return b.wins - a.wins;
+        if (b.wins !== a.wins) return b.wins - a.wins;
+
+        const aStreak =
+          sa && sa.currentStreakType === "W" && typeof sa.currentStreakLen === "number"
+            ? sa.currentStreakLen
+            : 0;
+        const bStreak =
+          sb && sb.currentStreakType === "W" && typeof sb.currentStreakLen === "number"
+            ? sb.currentStreakLen
+            : 0;
+        if (bStreak !== aStreak) return bStreak - aStreak;
+
+        const aProfile = profilesMap[a.user_id];
+        const bProfile = profilesMap[b.user_id];
+        const aCreator =
+          !!aProfile &&
+          typeof aProfile.username === "string" &&
+          aProfile.username.trim() === CREATOR_USERNAME;
+        const bCreator =
+          !!bProfile &&
+          typeof bProfile.username === "string" &&
+          bProfile.username.trim() === CREATOR_USERNAME;
+
+        if (aCreator && !bCreator) return -1;
+        if (!aCreator && bCreator) return 1;
+
+        return 0;
       });
     } else {
-      // Standard season sort: win% then wins
-      base.sort((a, b) => {
-        if (b.winPct !== a.winPct) return b.winPct - a.winPct;
-        return b.wins - a.wins;
-      });
+      // Standard Pick'em mode: use seasonAggregated ordering (already sorted with streak + creator tiebreaks)
+      return base;
     }
 
     return base;
-  }, [viewMode, weekViewAggregated, seasonAggregated, metricMode, statsByUser]);
+  }, [viewMode, weekViewAggregated, seasonAggregated, metricMode, statsByUser, profilesMap]);
 
   // Tie-aware rank map (same stats share rank; next rank skips)
   const rankMap = useMemo(() => {
