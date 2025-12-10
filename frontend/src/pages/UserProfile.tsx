@@ -1,6 +1,6 @@
 // src/pages/UserProfile.tsx
 import { useEffect, useMemo, useState } from "react";
-import { useParams, Link } from "react-router-dom";
+import { useParams, useNavigate, Link } from "react-router-dom";
 import { supabase } from "../lib/supabase";
 import { useAllUserStats } from "../hooks/useAllUserStats";
 import { useProfileBets } from "../hooks/useProfileBets";
@@ -131,6 +131,7 @@ function FollowButton({
 export default function UserProfile() {
   // slug can be username OR raw user id
   const { slug } = useParams<{ slug: string }>();
+  const navigate = useNavigate();
 
   const {
     statsByUser,
@@ -170,22 +171,35 @@ export default function UserProfile() {
     };
   }, []);
 
-  // Load profile info (lookup by id OR username, case-insensitive on username)
+  // Load profile info (lookup by id OR username, safer UUID logic)
   useEffect(() => {
     if (!slug) return;
+    const resolvedSlug = slug; // narrow to string for inner async function
     let cancelled = false;
 
     async function loadProfile() {
       setProfileLoading(true);
 
-      const { data, error } = await supabase
+      // Detect if slug looks like a UUID
+      const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(
+        resolvedSlug
+      );
+
+      let query = supabase
         .from("profiles")
         .select(
           "id, username, avatar_url, created_at, bio, favorite_team, social_url"
-        )
-        // Match either the id OR the username (case-insensitive)
-        .or(`id.eq.${slug},username.ilike.${slug}`)
-        .maybeSingle();
+        );
+
+      if (isUuid) {
+        // Allow lookup by id or username when slug is a UUID-looking string
+        query = query.or(`id.eq.${resolvedSlug},username.eq.${resolvedSlug}`);
+      } else {
+        // For non-UUID slugs, treat as username only to avoid UUID cast errors
+        query = query.eq("username", resolvedSlug);
+      }
+
+      const { data, error } = await query.maybeSingle();
 
       if (cancelled) return;
 
@@ -383,6 +397,21 @@ export default function UserProfile() {
       ? profile.username.trim()
       : profile?.id ?? slug ?? "";
 
+  // handle tag for @handle (prefer canonicalSlug, fallback to displayName)
+  const handleTag =
+    canonicalSlug ||
+    (displayName ? displayName.toLowerCase().replace(/\s+/g, "") : "");
+
+  // If the URL slug doesn't match the canonical slug (e.g. /u/id vs /u/username),
+  // redirect to the canonical URL so the handle and URL stay in sync.
+  useEffect(() => {
+    if (!profile || !slug) return;
+    if (!canonicalSlug) return;
+    if (slug !== canonicalSlug) {
+      navigate(`/u/${canonicalSlug}`, { replace: true });
+    }
+  }, [slug, canonicalSlug, navigate, profile]);
+
   const profileUrl = useMemo(() => {
     if (typeof window === "undefined" || !canonicalSlug) return "";
     return `${window.location.origin}/u/${canonicalSlug}`;
@@ -507,7 +536,7 @@ export default function UserProfile() {
               {displayName}
             </h1>
             <p className="text-xs text-slate-400">
-              @{displayName.toLowerCase().replace(/\s+/g, "")}
+              @{handleTag}
             </p>
             {createdLabel && (
               <p className="text-[11px] text-slate-500 mt-1">

@@ -545,6 +545,10 @@ export default function Leaderboard() {
               : `user_${item.user_id.slice(0, 6)}`;
 
           const initial = (label[0] ?? "?").toUpperCase();
+          const slugForUser =
+            username && username.trim().length > 0
+              ? username.trim()
+              : item.user_id;
           const rank = rankMap.get(item.user_id) ?? 0;
 
           const rankStyles =
@@ -602,7 +606,7 @@ export default function Leaderboard() {
             >
               {/* Clickable player area */}
               <Link
-                to={`/u/${item.user_id}`}
+                to={`/u/${slugForUser}`}
                 className="flex items-center gap-3 min-w-0 flex-shrink-0 hover:opacity-90 transition"
               >
                 <div className="w-7 text-[11px] font-semibold text-slate-500 text-right">
