@@ -148,6 +148,7 @@ export default function UserProfile() {
   const [followLoading, setFollowLoading] = useState(false);
   const [followError, setFollowError] = useState<string | null>(null);
   const [followVersion, setFollowVersion] = useState(0);
+  const [followListType, setFollowListType] = useState<"followers" | "following" | null>(null);
 
   // Logged-in user, so we know if this is "my" profile
   useEffect(() => {
@@ -401,6 +402,25 @@ export default function UserProfile() {
   const followerCount = followers.length;
   const followingCount = following.length;
 
+  const hasFollowers = followerCount > 0;
+  const hasFollowing = followingCount > 0;
+
+  const activeFollowList =
+    followListType === "followers" ? followers : following;
+
+  const activeFollowTitle =
+    followListType === "followers" ? "Followers" : "Following";
+
+  function openFollowList(type: "followers" | "following") {
+    if (type === "followers" && !hasFollowers) return;
+    if (type === "following" && !hasFollowing) return;
+    setFollowListType(type);
+  }
+
+  function closeFollowList() {
+    setFollowListType(null);
+  }
+
   // ---- Bets for this profile (DB / RLS handles visibility) ----
   const {
     bets: profileBets,
@@ -501,16 +521,103 @@ export default function UserProfile() {
               </p>
             )}
             <p className="text-[11px] text-slate-400 mt-1">
-              <span className="font-semibold text-slate-100">
-                {followerCount}
-              </span>{" "}
-              Followers{" "}
+              <button
+                type="button"
+                onClick={() => openFollowList("followers")}
+                disabled={!hasFollowers}
+                className="inline-flex items-center gap-1 disabled:text-slate-500 hover:text-yellow-300"
+              >
+                <span className="font-semibold text-slate-100">
+                  {followerCount}
+                </span>
+                <span>Followers</span>
+              </button>
               <span className="mx-1 text-slate-600">•</span>
-              <span className="font-semibold text-slate-100">
-                {followingCount}
-              </span>{" "}
-              Following
+              <button
+                type="button"
+                onClick={() => openFollowList("following")}
+                disabled={!hasFollowing}
+                className="inline-flex items-center gap-1 disabled:text-slate-500 hover:text-yellow-300"
+              >
+                <span className="font-semibold text-slate-100">
+                  {followingCount}
+                </span>
+                <span>Following</span>
+              </button>
             </p>
+      {followListType && (
+        <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/60">
+          <div className="bg-slate-900 border border-slate-700 rounded-2xl w-full max-w-md mx-4 shadow-xl">
+            <div className="flex items-center justify-between px-4 py-3 border-b border-slate-700">
+              <h2 className="text-sm font-semibold text-slate-100">
+                {activeFollowTitle}
+              </h2>
+              <button
+                type="button"
+                onClick={closeFollowList}
+                className="text-slate-400 hover:text-slate-100 text-sm"
+              >
+                ✕
+              </button>
+            </div>
+            <div className="max-h-80 overflow-y-auto">
+              {followLoading ? (
+                <div className="px-4 py-6 text-xs text-slate-400">
+                  Loading…
+                </div>
+              ) : !activeFollowList.length ? (
+                <div className="px-4 py-6 text-xs text-slate-400">
+                  No users to show.
+                </div>
+              ) : (
+                <ul className="divide-y divide-slate-800">
+                  {activeFollowList.map((p) => {
+                    const label =
+                      p.username && p.username.trim().length > 0
+                        ? p.username
+                        : `user_${p.id.slice(0, 6)}`;
+
+                    const slugForUser =
+                      p.username && p.username.trim().length > 0
+                        ? p.username.trim()
+                        : p.id;
+
+                    return (
+                      <li key={p.id}>
+                        <Link
+                          to={`/u/${slugForUser}`}
+                          onClick={closeFollowList}
+                          className="flex items-center gap-3 px-4 py-3 hover:bg-slate-800/70"
+                        >
+                          <div className="w-8 h-8 rounded-full overflow-hidden bg-slate-700 flex items-center justify-center text-[11px] font-semibold text-slate-100">
+                            {p.avatar_url ? (
+                              <img
+                                src={p.avatar_url}
+                                alt={label}
+                                className="w-full h-full object-cover"
+                              />
+                            ) : (
+                              (label[0] ?? "U").toUpperCase()
+                            )}
+                          </div>
+                          <div className="flex flex-col min-w-0">
+                            <span className="text-sm text-slate-100 truncate">
+                              {label}
+                            </span>
+                            <span className="text-[11px] text-slate-500 truncate">
+                              @{label.toLowerCase().replace(/\s+/g, "")}
+                            </span>
+                          </div>
+                        </Link>
+                      </li>
+                    );
+                  })}
+                </ul>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
           </div>
         </div>
 
