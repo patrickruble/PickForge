@@ -64,12 +64,14 @@ function gradePick(row: PickWithGame): Grade {
   const pickedScore = row.side === "home" ? home : away;
   const otherScore = row.side === "home" ? away : home;
 
+  // Moneyline or missing spread → straight-up winner
   if (row.picked_price_type === "ml" || row.picked_price == null) {
     if (pickedScore > otherScore) return "win";
     if (pickedScore < otherScore) return "loss";
     return "push";
   }
 
+  // Against the spread: picked_price is line on picked side
   const spread = row.picked_price;
   const spreadDiff = pickedScore + spread - otherScore;
   if (spreadDiff > 0) return "win";
@@ -80,8 +82,10 @@ function gradePick(row: PickWithGame): Grade {
 export default function Leaderboard() {
   const currentWeek = useMemo(() => getNflWeekNumber(new Date()), []);
   const [selectedWeek, setSelectedWeek] = useState(currentWeek);
+
   const isCurrentWeek = selectedWeek === currentWeek;
 
+  // SEO for leaderboard page
   usePageSeo({
     title: `PickForge — NFL Week ${selectedWeek} Pick’em Leaderboard & Season Standings`,
     description:
@@ -90,17 +94,21 @@ export default function Leaderboard() {
 
   const [rows, setRows] = useState<PickWithGame[]>([]);
   const [loading, setLoading] = useState(true);
+
   const [profilesMap, setProfilesMap] = useState<Record<string, ProfileInfo>>(
     {}
   );
 
-  // CHANGE: default to "season" so the page always shows all-time first
-  const [viewMode, setViewMode] = useState<"week" | "season">("season");
+  // Week vs season view
+  const [viewMode, setViewMode] = useState<"week" | "season">("week");
 
+  // Search term for players
   const [searchTerm, setSearchTerm] = useState("");
 
+  // Season-long stats for each user
   const { statsByUser, loading: statsLoading } = useAllUserStats();
 
+  // Only compute a real date window for the actual current week
   const weekWindow = useMemo(() => {
     if (!isCurrentWeek) return null;
     const { weekStart, weekEnd } = currentNflWeekWindow(new Date());
@@ -111,12 +119,14 @@ export default function Leaderboard() {
     )} – ${weekEnd.toLocaleDateString(undefined, fmt)}`;
   }, [isCurrentWeek]);
 
+  // Load picks + games for the selected week
   useEffect(() => {
     let cancelled = false;
 
     async function load() {
       setLoading(true);
 
+      // Picks for selected week
       const { data: pickData, error: pickError } = await supabase
         .from("picks")
         .select(
@@ -136,6 +146,7 @@ export default function Leaderboard() {
 
       const picks = (pickData ?? []) as PickRow[];
 
+      // Games for selected week
       const { data: gameData, error: gameError } = await supabase
         .from("games")
         .select("id, status, home_score, away_score, week, league")
@@ -178,6 +189,7 @@ export default function Leaderboard() {
     };
   }, [selectedWeek]);
 
+  // Weekly aggregated leaderboard
   const weekAggregated: LeaderItem[] = useMemo(() => {
     const stats = new Map<string, LeaderItem>();
 
@@ -223,6 +235,7 @@ export default function Leaderboard() {
     return list.slice(0, 100);
   }, [rows, profilesMap]);
 
+  // Season aggregated leaderboard from useAllUserStats
   const seasonAggregated: LeaderItem[] = useMemo(() => {
     const list: LeaderItem[] = [];
 
@@ -235,7 +248,7 @@ export default function Leaderboard() {
         losses: s.losses,
         pushes: s.pushes,
         total: s.totalPicks,
-        winPct: s.winRate / 100,
+        winPct: s.winRate / 100, // convert percent to fraction
         profile: profilesMap[user_id],
       });
     });
@@ -248,6 +261,7 @@ export default function Leaderboard() {
     return list.slice(0, 100);
   }, [statsByUser, profilesMap]);
 
+  // For loading profiles, consider both week and season users
   const allAggregatedForProfiles: LeaderItem[] = useMemo(() => {
     const map = new Map<string, LeaderItem>();
     for (const item of weekAggregated) map.set(item.user_id, item);
@@ -257,6 +271,7 @@ export default function Leaderboard() {
     return Array.from(map.values());
   }, [weekAggregated, seasonAggregated]);
 
+  // Load profiles for any user ids we do not know yet
   useEffect(() => {
     const unknownIds = allAggregatedForProfiles
       .filter((i) => profilesMap[i.user_id] === undefined)
@@ -305,6 +320,33 @@ export default function Leaderboard() {
   const activeAggregated =
     viewMode === "week" ? weekAggregated : seasonAggregated;
 
+  // Tie-aware rank map (same stats share rank; next rank skips)
+  const rankMap = useMemo(() => {
+    const map = new Map<string, number>();
+    if (!activeAggregated.length) return map;
+
+    let currentRank = 0;
+    let itemsSeen = 0;
+    let prevKey: string | null = null;
+
+    for (const item of activeAggregated) {
+      const key = `${item.winPct}|${item.wins}|${item.losses}|${item.pushes}`;
+
+      if (prevKey === null) {
+        currentRank = 1;
+      } else if (key !== prevKey) {
+        currentRank = itemsSeen + 1;
+      }
+
+      map.set(item.user_id, currentRank);
+      itemsSeen += 1;
+      prevKey = key;
+    }
+
+    return map;
+  }, [activeAggregated]);
+
+  // Filtered list based on search term
   const filteredAggregated: LeaderItem[] = useMemo(() => {
     const term = searchTerm.trim().toLowerCase();
     if (!term) return activeAggregated;
@@ -319,8 +361,7 @@ export default function Leaderboard() {
       const handle = baseLabel.toLowerCase().replace(/\s+/g, "");
 
       return (
-        baseLabel.toLowerCase().includes(term) ||
-        handle.includes(term)
+        baseLabel.toLowerCase().includes(term) || handle.includes(term)
       );
     });
   }, [activeAggregated, searchTerm]);
@@ -332,6 +373,7 @@ export default function Leaderboard() {
 
   const isWeekView = viewMode === "week";
 
+  // Loading state for week view
   if (isWeekView && loading && !rows.length) {
     return (
       <div className="px-4 py-8 max-w-4xl mx-auto font-sans">
@@ -354,7 +396,8 @@ export default function Leaderboard() {
     );
   }
 
-  if (!activeAggregated.length) {
+  // Only show full-page empty state if there is NO season data either
+  if (!activeAggregated.length && !seasonAggregated.length) {
     return (
       <div className="px-4 py-8 max-w-4xl mx-auto font-sans">
         <h1 className="font-display text-3xl sm:text-4xl tracking-[0.18em] uppercase text-yellow-400 mb-1 drop-shadow-[0_0_12px_rgba(250,204,21,0.35)]">
@@ -378,6 +421,7 @@ export default function Leaderboard() {
     );
   }
 
+  // Main UI
   return (
     <section className="px-3 py-5 sm:px-4 sm:py-6 max-w-4xl mx-auto font-sans">
       <header className="mb-4 sm:mb-5 flex flex-col sm:flex-row sm:items-end sm:justify-between gap-3">
@@ -401,13 +445,14 @@ export default function Leaderboard() {
             players
           </div>
 
+          {/* Week selector – always usable */}
           <div className="flex items-center bg-slate-900/80 border border-slate-700/80 rounded-full overflow-hidden">
             <button
               type="button"
               onClick={() =>
                 setSelectedWeek((w) => Math.max(MIN_WEEK, w - 1))
               }
-              disabled={!isWeekView || selectedWeek <= MIN_WEEK}
+              disabled={selectedWeek <= MIN_WEEK}
               className="px-2 py-1 text-[11px] sm:text-xs text-slate-300 disabled:opacity-40 hover:text-slate-100"
             >
               ◀
@@ -420,7 +465,7 @@ export default function Leaderboard() {
               onClick={() =>
                 setSelectedWeek((w) => Math.min(MAX_WEEK, w + 1))
               }
-              disabled={!isWeekView || selectedWeek >= MAX_WEEK}
+              disabled={selectedWeek >= MAX_WEEK}
               className="px-2 py-1 text-[11px] sm:text-xs text-slate-300 disabled:opacity-40 hover:text-slate-100"
             >
               ▶
@@ -429,16 +474,14 @@ export default function Leaderboard() {
 
           <button
             type="button"
-            onClick={() => {
-              setViewMode("week");
-              setSelectedWeek(currentWeek);
-            }}
-            disabled={!isWeekView && selectedWeek === currentWeek}
+            onClick={() => setSelectedWeek(currentWeek)}
+            disabled={selectedWeek === currentWeek}
             className="px-2.5 py-1 rounded-full bg-slate-900/80 border border-slate-700/80 text-[11px] sm:text-xs text-slate-300 hover:text-slate-100 disabled:opacity-40"
           >
             This week
           </button>
 
+          {/* View toggle */}
           <div className="flex items-center bg-slate-900/80 border border-slate-700/80 rounded-full p-1">
             <button
               onClick={() => setViewMode("week")}
@@ -462,6 +505,7 @@ export default function Leaderboard() {
             </button>
           </div>
 
+          {/* Search input */}
           <div className="w-full sm:w-44 md:w-56">
             <input
               type="text"
@@ -474,6 +518,15 @@ export default function Leaderboard() {
         </div>
       </header>
 
+      {/* Hint when this week is empty but season has data */}
+      {isWeekView && !weekAggregated.length && seasonAggregated.length > 0 && (
+        <p className="text-[11px] sm:text-xs text-slate-500 mb-2">
+          No graded games yet for Week {selectedWeek}. Switch to{" "}
+          <span className="font-semibold text-slate-200">Season</span> to see
+          full standings.
+        </p>
+      )}
+
       <div className="hidden sm:grid grid-cols-[auto,1fr,auto] text-[11px] uppercase tracking-wide text-slate-500 px-3 pb-1">
         <span>Rank</span>
         <span>Player</span>
@@ -483,7 +536,7 @@ export default function Leaderboard() {
       </div>
 
       <ol className="space-y-2 sm:space-y-3">
-        {filteredAggregated.map((item, idx) => {
+        {filteredAggregated.map((item) => {
           const profile = item.profile;
           const username = profile?.username ?? null;
           const label =
@@ -492,7 +545,7 @@ export default function Leaderboard() {
               : `user_${item.user_id.slice(0, 6)}`;
 
           const initial = (label[0] ?? "?").toUpperCase();
-          const rank = idx + 1;
+          const rank = rankMap.get(item.user_id) ?? 0;
 
           const rankStyles =
             rank === 1
@@ -503,6 +556,7 @@ export default function Leaderboard() {
               ? "border-amber-600/70"
               : "border-slate-700/60";
 
+          // Week stats from weekAggregated (if user appears there)
           const weekItem = weekAggregated.find(
             (w) => w.user_id === item.user_id
           );
@@ -515,6 +569,7 @@ export default function Leaderboard() {
             ? `${(weekItem.winPct * 100).toFixed(1)}%`
             : "—";
 
+          // Season stats from statsByUser
           const seasonStats = statsByUser[item.user_id];
           const seasonRecordText = seasonStats
             ? `${seasonStats.wins}-${seasonStats.losses}${
@@ -532,6 +587,7 @@ export default function Leaderboard() {
               ? `${seasonStats.currentStreakType}${seasonStats.currentStreakLen}`
               : "—";
 
+          // Primary display based on view
           const primaryRecordText = isWeekView
             ? weekRecordText
             : seasonRecordText;
@@ -544,12 +600,13 @@ export default function Leaderboard() {
               key={item.user_id}
               className={`rounded-2xl bg-slate-900/80 border ${rankStyles} px-3 py-2 sm:px-4 sm:py-3 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 sm:gap-3`}
             >
+              {/* Clickable player area */}
               <Link
                 to={`/u/${item.user_id}`}
                 className="flex items-center gap-3 min-w-0 flex-shrink-0 hover:opacity-90 transition"
               >
                 <div className="w-7 text-[11px] font-semibold text-slate-500 text-right">
-                  #{rank}
+                  #{rank || "?"}
                 </div>
                 <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-full overflow-hidden bg-slate-700 flex items-center justify-center text-xs font-semibold text-slate-100 border border-slate-700 flex-shrink-0">
                   {profile?.avatar_url ? (
