@@ -15,12 +15,15 @@ type PickSnapshot = {
   mlAway?: number | null;
 };
 
+type ContestType = "pickem" | "mm";
+
 type PickRow = {
   game_id: string;
   side: "home" | "away";
   league: "nfl";
   week: number;
   commence_at: string;
+  contest_type: ContestType;
   picked_price_type?: "ml" | "spread" | null;
   picked_price?: number | null;
   picked_snapshot?: PickSnapshot | null;
@@ -74,8 +77,8 @@ export default function MyPicks() {
   const [rows, setRows] = useState<PickWithGame[]>([]);
   const [loadingPicks, setLoadingPicks] = useState(true);
 
-  // Mode toggle: show all weekly picks vs only Moneyline Mastery (ML) picks
-  const [mode, setMode] = useState<"all" | "mm">("all");
+  // Mode toggle: show Pick'em (spread) picks vs only Moneyline Mastery (ML) picks
+  const [mode, setMode] = useState<"pickem" | "mm">("pickem");
 
   // Lines (we only use them for context; don't block UI on them)
   const { games, isLoading: linesLoading } = useLines("nfl");
@@ -135,7 +138,7 @@ export default function MyPicks() {
         const { data, error } = await supabase
           .from("picks")
           .select(
-            "game_id, side, league, week, commence_at, picked_price_type, picked_price, picked_snapshot"
+            "game_id, side, league, week, commence_at, contest_type, picked_price_type, picked_price, picked_snapshot"
           )
           .eq("user_id", uid)
           .eq("league", "nfl")
@@ -196,27 +199,24 @@ export default function MyPicks() {
 
   const weekNum = getNflWeekNumber(new Date());
 
-  // True ML picks (used for MM stats/count)
-  const mlRows = useMemo(
-    () =>
-      rows.filter(
-        (r) => r.picked_price_type === "ml" && r.picked_price != null
-      ),
+  // Pick'em (spread) picks
+  const pickemRows = useMemo(
+    () => rows.filter((r) => r.contest_type === "pickem"),
+    [rows]
+  );
+
+  // Moneyline Mastery picks (contest_type = 'mm')
+  const mmRows = useMemo(
+    () => rows.filter((r) => r.contest_type === "mm"),
     [rows]
   );
 
   // What we actually show in the list:
-  // - All picks in "All" mode
-  // - Only ML picks in "MM" mode when there are any
-  // - Fallback to all picks in "MM" mode when there are zero ML picks (so page isn't empty)
+  // - Pick'em picks in "Pick'em" mode
+  // - Only MM picks in "MM" mode
   const visibleRows = useMemo(
-    () =>
-      mode === "all"
-        ? rows
-        : mlRows.length > 0
-        ? mlRows
-        : rows,
-    [mode, rows, mlRows]
+    () => (mode === "pickem" ? pickemRows : mmRows),
+    [mode, pickemRows, mmRows]
   );
 
   // -------- Loading state --------
@@ -286,26 +286,26 @@ export default function MyPicks() {
         <div className="flex flex-col sm:flex-row items-start sm:items-center gap-2 text-[11px] sm:text-xs text-slate-400">
           <div>
             <span className="font-semibold text-slate-100">
-              {visibleRows.length}
+              {mode === "pickem" ? pickemRows.length : mmRows.length}
             </span>{" "}
-            picks locked in.
+            {mode === "pickem" ? "Pick'em picks locked in." : "ML picks locked in."}
             {mode === "mm" && (
               <span className="ml-1 text-slate-500">
-                ({mlRows.length} ML picks for Moneyline Mastery.)
+                ({mmRows.length} ML picks for Moneyline Mastery.)
               </span>
             )}
           </div>
           <div className="flex items-center bg-slate-900/80 border border-slate-700/80 rounded-full p-1">
             <button
               type="button"
-              onClick={() => setMode("all")}
+              onClick={() => setMode("pickem")}
               className={`px-3 py-1 rounded-full text-[11px] sm:text-xs transition ${
-                mode === "all"
+                mode === "pickem"
                   ? "bg-yellow-400 text-slate-900 font-semibold shadow-[0_0_10px_rgba(250,204,21,0.6)]"
                   : "text-slate-300 hover:text-slate-100"
               }`}
             >
-              All
+              Pick&apos;em
             </button>
             <button
               type="button"
@@ -485,7 +485,7 @@ if (grade === "push") {
 
           return (
             <li
-              key={`${r.game_id}-${r.side}`}
+              key={`${r.game_id}-${r.side}-${r.contest_type}`}
               className={baseCard + (grade === "pending" ? "" : tint)}
             >
               <div className="flex flex-col gap-2 sm:gap-3 sm:flex-row sm:items-center sm:justify-between">
