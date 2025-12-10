@@ -15,6 +15,8 @@ type NewBetForm = {
   odds_american: string;
   stake: string;
   visibility: BetVisibility;
+  notes: string;
+  confidence: string; // 1–5 as a string for the form
 };
 
 type TimeFilter = "all" | "7d" | "30d" | "ytd";
@@ -71,6 +73,8 @@ export default function MyBets() {
     odds_american: "",
     stake: "",
     visibility: "private",
+    notes: "",
+    confidence: "",
   });
 
   // Which bet (if any) we're editing
@@ -359,6 +363,8 @@ export default function MyBets() {
       odds_american: "",
       stake: "",
       visibility: "private",
+      notes: "",
+      confidence: "",
     });
     setEditingBet(null);
   }
@@ -380,6 +386,12 @@ export default function MyBets() {
       odds_american: String(bet.odds_american ?? ""),
       stake: String(bet.stake ?? ""),
       visibility: bet.visibility ?? "private",
+      notes: (bet as any).notes ?? "",
+      confidence:
+        typeof (bet as any).confidence === "number" &&
+        !Number.isNaN((bet as any).confidence)
+          ? String((bet as any).confidence)
+          : "",
     });
   }
 
@@ -433,6 +445,12 @@ export default function MyBets() {
       ? new Date(form.event_date + "T00:00:00").toISOString()
       : null;
 
+    const confidenceNum = form.confidence ? Number(form.confidence) : null;
+    const cleanConfidence =
+      confidenceNum !== null && Number.isFinite(confidenceNum) && confidenceNum > 0
+        ? confidenceNum
+        : null;
+
     setSaving(true);
     setError(null);
 
@@ -453,6 +471,8 @@ export default function MyBets() {
             stake,
             to_win: toWin,
             visibility: form.visibility ?? "private",
+            notes: form.notes.trim() || null,
+            confidence: cleanConfidence,
           })
           .eq("id", editingBet.id)
           .select("*")
@@ -485,6 +505,8 @@ export default function MyBets() {
             status: "pending",
             result_amount,
             visibility: form.visibility ?? "private",
+            notes: form.notes.trim() || null,
+            confidence: cleanConfidence,
           })
           .select("*")
           .single();
@@ -504,6 +526,58 @@ export default function MyBets() {
       setSaving(false);
     }
   }
+  const breakdownByTeam = useMemo(() => {
+    if (!gradedBets.length)
+      return [] as {
+        team: string;
+        total: number;
+        wins: number;
+        losses: number;
+        pushes: number;
+        net: number;
+      }[];
+
+    const map = new Map<
+      string,
+      {
+        team: string;
+        total: number;
+        wins: number;
+        losses: number;
+        pushes: number;
+        net: number;
+      }
+    >();
+
+    for (const b of gradedBets) {
+      const raw = (b.selection || "").trim();
+      if (!raw) continue;
+
+      // Rough team key: first token of the selection
+      const firstToken = raw.split(/\s+/)[0]?.toUpperCase() || "OTHER";
+      const key = firstToken;
+
+      if (!map.has(key)) {
+        map.set(key, {
+          team: key,
+          total: 0,
+          wins: 0,
+          losses: 0,
+          pushes: 0,
+          net: 0,
+        });
+      }
+
+      const entry = map.get(key)!;
+      entry.total += 1;
+      entry.net += b.result_amount;
+      if (b.status === "won") entry.wins += 1;
+      else if (b.status === "lost") entry.losses += 1;
+      else if (b.status === "push") entry.pushes += 1;
+    }
+
+    return Array.from(map.values()).sort((a, b) => b.total - a.total);
+  }, [gradedBets]);
 
   async function handleStatusChange(bet: BetRow, newStatus: BetStatus) {
     if (bet.status === newStatus) return;
@@ -940,6 +1014,39 @@ export default function MyBets() {
                 </div>
               </div>
             )}
+            {!!breakdownByTeam.length && (
+              <div className="mt-3">
+                <p className="text-[10px] uppercase tracking-wide text-slate-500 mb-1">
+                  By team (experimental)
+                </p>
+                <div className="flex flex-wrap gap-2 text-[11px]">
+                  {breakdownByTeam.map((t) => (
+                    <div
+                      key={t.team}
+                      className="px-2 py-1 rounded-full border border-slate-700 bg-slate-900/80"
+                    >
+                      <span className="font-semibold text-slate-100">
+                        {t.team}
+                      </span>{" "}
+                      {t.wins}-{t.losses}
+                      {t.pushes ? `-${t.pushes}` : ""} ·{" "}
+                      <span
+                        className={
+                          t.net > 0
+                            ? "text-emerald-400"
+                            : t.net < 0
+                            ? "text-rose-400"
+                            : "text-slate-200"
+                        }
+                      >
+                        {t.net >= 0 ? "+" : ""}
+                        ${t.net.toFixed(2)}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
           </>
         )}
       </section>
@@ -1086,6 +1193,23 @@ export default function MyBets() {
               required
             />
           </div>
+          <div className="flex flex-col gap-1 sm:col-span-2">
+            <label
+              htmlFor="bet-notes"
+              className="text-[11px] uppercase tracking-wide text-slate-400"
+            >
+              Reason / Notes (optional)
+            </label>
+            <textarea
+              id="bet-notes"
+              name="notes"
+              value={form.notes}
+              onChange={(e) => updateField("notes", e.target.value)}
+              placeholder="Why you like this side, key angles, etc."
+              rows={2}
+              className="bg-slate-900 border border-slate-700 rounded-lg px-2 py-1.5 text-sm resize-none"
+            />
+          </div>
 
           <div className="flex flex-col gap-1">
             <label
@@ -1125,6 +1249,28 @@ export default function MyBets() {
               className="bg-slate-900 border border-slate-700 rounded-lg px-2 py-1.5 text-sm"
               required
             />
+          </div>
+          <div className="flex flex-col gap-1">
+            <label
+              htmlFor="bet-confidence"
+              className="text-[11px] uppercase tracking-wide text-slate-400"
+            >
+              Confidence
+            </label>
+            <select
+              id="bet-confidence"
+              name="confidence"
+              value={form.confidence}
+              onChange={(e) => updateField("confidence", e.target.value)}
+              className="bg-slate-900 border border-slate-700 rounded-lg px-2 py-1.5 text-sm"
+            >
+              <option value="">—</option>
+              <option value="1">1 / 5</option>
+              <option value="2">2 / 5</option>
+              <option value="3">3 / 5</option>
+              <option value="4">4 / 5</option>
+              <option value="5">5 / 5</option>
+            </select>
           </div>
 
           <div className="flex flex-col gap-1">
@@ -1236,7 +1382,16 @@ export default function MyBets() {
                         <div className="text-slate-200">{b.selection}</div>
                         <div className="text-[11px] text-slate-500">
                           {b.bet_type}
+                          {typeof (b as any).confidence === "number" &&
+                            !Number.isNaN((b as any).confidence) && (
+                              <> • Confidence: {(b as any).confidence}/5</>
+                            )}
                         </div>
+                        {(b as any).notes && (
+                          <div className="text-[11px] text-slate-500 mt-0.5">
+                            Reason: {(b as any).notes}
+                          </div>
+                        )}
                       </td>
                       <td className="px-3 py-2 text-right align-top">
                         {b.odds_american > 0 ? "+" : ""}
