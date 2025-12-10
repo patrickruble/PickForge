@@ -47,6 +47,20 @@ export default function MyBets() {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  // Private unit size for this user (used to normalize stakes into "units")
+  // Stored in localStorage so it persists on this device.
+  const [unitSize, setUnitSize] = useState<number>(() => {
+    if (typeof window === "undefined") return 50;
+    const stored = window.localStorage.getItem("pf_unit_size");
+    const n = stored ? Number(stored) : NaN;
+    return Number.isFinite(n) && n > 0 ? n : 50;
+  });
+  // Persist unit size locally so it sticks between sessions on this device
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    window.localStorage.setItem("pf_unit_size", String(unitSize));
+  }, [unitSize]);
+
   const [form, setForm] = useState<NewBetForm>({
     sport: "nfl",
     book_name: "",
@@ -613,6 +627,31 @@ export default function MyBets() {
               <option value="30d">Last 30 days</option>
               <option value="ytd">Year to date</option>
             </select>
+          </div>
+
+          {/* Unit size slider */}
+          <div className="flex flex-col gap-1">
+            <label
+              htmlFor="unit-size"
+              className="text-[10px] uppercase tracking-wide text-slate-500"
+            >
+              Unit size (private)
+            </label>
+            <div className="flex items-center gap-2">
+              <input
+                id="unit-size"
+                type="range"
+                min={5}
+                max={500}
+                step={5}
+                value={unitSize}
+                onChange={(e) => setUnitSize(Number(e.target.value))}
+                className="w-32 sm:w-40"
+              />
+              <span className="text-[11px] text-slate-300 whitespace-nowrap">
+                1u = ${unitSize.toFixed(0)}
+              </span>
+            </div>
           </div>
 
           <div className="flex flex-col gap-1 ml-auto">
