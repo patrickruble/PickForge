@@ -104,7 +104,10 @@ export function classifyDogFav(
 // ----------------------------------------------------------
 // formatLine
 // ----------------------------------------------------------
-export function formatLine(p: PickRow): string {
+export function formatLine(
+  p: PickRow,
+  _mode: "pickem" | "mm" = "pickem"
+): string {
   if (!p.picked_price_type || p.picked_price == null) return "-";
 
   const v = p.picked_price;

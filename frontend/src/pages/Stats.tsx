@@ -86,7 +86,7 @@ export default function Stats() {
       const { data: picksRaw, error: picksError } = await supabase
         .from("picks")
         .select(
-          "id,user_id,league,week,game_id,side,picked_price_type,picked_price"
+          "id,user_id,league,week,game_id,side,picked_price_type,picked_price,picked_snapshot"
         )
         .eq("user_id", user.id)
         .eq("league", league);
@@ -225,8 +225,8 @@ export default function Stats() {
 
   // Selected week for detailed breakdown (defaults to most recent)
   const [selectedWeek, setSelectedWeek] = useState<number | null>(null);
-  // Mode for breakdown: show all picks vs moneyline-only (Moneyline Mastery)
-  const [breakdownMode, setBreakdownMode] = useState<"all" | "mm">("all");
+  // Mode for breakdown: Pick'em spread picks vs moneyline-only (Moneyline Mastery)
+  const [breakdownMode, setBreakdownMode] = useState<"pickem" | "mm">("pickem");
 
   useEffect(() => {
     if (!weeks.length) return;
@@ -249,7 +249,7 @@ export default function Stats() {
       );
     }
 
-    // All picks
+    // Pick'em view – show all picks for that week (spread + ML)
     return base;
   }, [rows, selectedWeek, breakdownMode]);
 
@@ -430,14 +430,14 @@ export default function Stats() {
               <div className="flex items-center bg-slate-900/80 border border-slate-700/80 rounded-full p-1">
                 <button
                   type="button"
-                  onClick={() => setBreakdownMode("all")}
+                  onClick={() => setBreakdownMode("pickem")}
                   className={`px-3 py-1 rounded-full text-[11px] sm:text-xs transition ${
-                    breakdownMode === "all"
+                    breakdownMode === "pickem"
                       ? "bg-yellow-400 text-slate-900 font-semibold shadow-[0_0_10px_rgba(250,204,21,0.6)]"
                       : "text-slate-300 hover:text-slate-100"
                   }`}
                 >
-                  All
+                  Pick&apos;em
                 </button>
                 <button
                   type="button"
@@ -456,11 +456,17 @@ export default function Stats() {
         </div>
         <p className="text-xs text-slate-400 mb-3">
           Viewing{" "}
-          {breakdownMode === "mm" ? "moneyline-only picks" : "all picks"} for{" "}
-          {selectedWeek !== null ? `Week ${selectedWeek}` : "recent weeks"}.{" "}
+          {breakdownMode === "mm"
+            ? "moneyline-only picks (Moneyline Mastery)"
+            : "your picks"}{" "}
+          for {selectedWeek !== null ? `Week ${selectedWeek}` : "recent weeks"}.{" "}
           Result and "Covered" are only shown once a game is final.
           {breakdownMode === "mm" && mlCountForSelectedWeek === 0 && (
-            <> You don&apos;t have any moneyline picks for this week yet, so there&apos;s nothing to show here.</>
+            <>
+              {" "}
+              You don&apos;t have any moneyline picks for this week yet, so
+              there&apos;s nothing to show here.
+            </>
           )}
           {breakdownMode === "mm" && mlCountForSelectedWeek > 0 && (
             <> Moneyline Mastery uses these graded moneyline picks.</>
@@ -502,14 +508,49 @@ export default function Stats() {
                     ? "Even"
                     : "-";
 
-                const typeLabel =
-                  p.picked_price_type === "spread"
-                    ? "Spread"
-                    : p.picked_price_type === "ml"
-                    ? "ML"
-                    : "-";
+                const isMmMode = breakdownMode === "mm";
 
-                const lineLabel = formatLine(p);
+                // For display, treat Pick'em as spread-based and MM as moneyline-based,
+                // regardless of how the pick is graded internally.
+                const typeLabel = isMmMode ? "ML" : "Spread";
+
+                // Derive the displayed number from the saved snapshot, same idea as MyPicks.
+                const snap: any | null = (p as any).picked_snapshot ?? null;
+                let displayLine: number | null = null;
+
+                if (isMmMode) {
+                  // MM: show the moneyline you locked in
+                  if (p.picked_price_type === "ml" && p.picked_price != null) {
+                    displayLine = p.picked_price;
+                  } else if (snap) {
+                    const mlKey = p.side === "home" ? "mlHome" : "mlAway";
+                    const v = snap[mlKey];
+                    if (typeof v === "number") displayLine = v;
+                  }
+                } else {
+                  // Pick'em: show the spread you locked in
+                  if (snap) {
+                    const spreadKey =
+                      p.side === "home" ? "spreadHome" : "spreadAway";
+                    const v = snap[spreadKey];
+                    if (typeof v === "number") displayLine = v;
+                  }
+                  if (
+                    displayLine == null &&
+                    p.picked_price_type === "spread" &&
+                    p.picked_price != null
+                  ) {
+                    // Fallback if snapshot is missing
+                    displayLine = p.picked_price;
+                  }
+                }
+
+                const lineLabel =
+                  displayLine == null
+                    ? "-"
+                    : displayLine > 0
+                    ? `+${displayLine}`
+                    : `${displayLine}`;
 
                 let resultLabel = "-";
                 if (g === "win") resultLabel = "Win";
