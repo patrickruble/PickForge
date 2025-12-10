@@ -200,9 +200,20 @@ export default function GameBoard() {
             <span className="text-yellow-400">NFL Week {week}</span>
           </h1>
           <p className="text-xs sm:text-sm text-slate-400 mt-1">
-            {mode === "mm"
-              ? "Moneyline Mastery view — focus on your moneyline picks. Games lock at kickoff."
-              : "Tap a side to lock in your weekly pick. Games lock at kickoff."}
+            {mode === "mm" ? (
+              <>
+                Moneyline Mastery mode: pick one team on the moneyline for each
+                game. Underdog wins add their +odds to your score, heavy
+                favorite losses subtract their -price. All picks lock at
+                kickoff.
+              </>
+            ) : (
+              <>
+                Standard pick&apos;em: pick one side for each game this week.
+                Picks are graded using the spread or moneyline you see here and
+                count toward the season leaderboard. All picks lock at kickoff.
+              </>
+            )}
           </p>
           <p className="text-[11px] text-slate-500 mt-1">{windowLabel}</p>
         </div>
