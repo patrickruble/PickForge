@@ -31,6 +31,7 @@ type PickRow = {
   side: "home" | "away";
   picked_price_type: "ml" | "spread" | null;
   picked_price: number | null;
+  contest_type: "pickem" | "mm" | null;
 };
 
 type PickWithGame = PickRow & {
@@ -133,7 +134,7 @@ export default function Leaderboard() {
       const { data: pickData, error: pickError } = await supabase
         .from("picks")
         .select(
-          "user_id, game_id, week, league, side, picked_price_type, picked_price"
+          "user_id, game_id, week, league, side, picked_price_type, picked_price, contest_type"
         )
         .eq("league", league)
         .eq("week", selectedWeek);
@@ -264,14 +265,26 @@ export default function Leaderboard() {
     return list.slice(0, 100);
   }, [statsByUser, profilesMap]);
 
-  // All users who have any picks for the selected week (spread or ML)
+  // All users who have relevant picks for the selected week (spread for Pick'em, ML for MM)
   const weekParticipants: string[] = useMemo(() => {
     const set = new Set<string>();
+
     for (const r of rows) {
+      // For week view, respect the metric toggle:
+      //  - Pick'em: only consider spread picks
+      //  - MM: only consider moneyline picks
+      if (metricMode === "mm") {
+        if (r.picked_price_type !== "ml") continue;
+      } else {
+        // Pick'em mode
+        if (r.picked_price_type !== "spread") continue;
+      }
+
       set.add(r.user_id);
     }
+
     return Array.from(set);
-  }, [rows]);
+  }, [rows, metricMode]);
 
   // Week view: show all players who picked this week, ordered by season standings
   const weekViewAggregated: LeaderItem[] = useMemo(() => {
@@ -389,8 +402,31 @@ export default function Leaderboard() {
   const activeAggregated: LeaderItem[] = useMemo(() => {
     if (viewMode === "week") return weekViewAggregated;
 
-    // For season view, allow toggling between standard (win%) and Moneyline Mastery sorting
-    const base = [...seasonAggregated];
+    // Season view
+    let base = [...seasonAggregated];
+
+    // In MM mode, only include users who have actually played Moneyline Mastery
+    if (metricMode === "mm") {
+      base = base.filter((item) => {
+        const s = statsByUser[item.user_id];
+        if (!s) return false;
+
+        // If we have a Moneyline Mastery value at all, consider this user "entered"
+        if (typeof s.moneylineMastery === "number") {
+          return true;
+        }
+
+        // Otherwise, fall back to any explicit MM pick-count fields if they exist
+        const mmCount =
+          typeof (s as any).moneylinePicks === "number"
+            ? (s as any).moneylinePicks
+            : typeof (s as any).mmPicks === "number"
+            ? (s as any).mmPicks
+            : undefined;
+
+        return typeof mmCount === "number" && mmCount > 0;
+      });
+    }
 
     if (metricMode === "mm") {
       // Sort by Moneyline Mastery (desc), then fall back to win% and wins
@@ -731,11 +767,18 @@ export default function Leaderboard() {
                 )}`
               : "—";
 
-          // Primary display based on view
-          const primaryRecordText = isWeekView
+          // Primary display based on view / metric
+          const isSeasonMM = !isWeekView && metricMode === "mm";
+
+          const primaryRecordText = isSeasonMM
+            ? moneylineMasteryText
+            : isWeekView
             ? weekRecordText
             : seasonRecordText;
-          const primaryWinPctText = isWeekView
+
+          const primaryWinPctText = isSeasonMM
+            ? ""
+            : isWeekView
             ? weekWinPctText
             : seasonWinPctText;
 
@@ -778,22 +821,25 @@ export default function Leaderboard() {
                   {primaryRecordText}
                 </div>
                 <div className="text-[11px] sm:text-xs text-slate-400">
-                  {isWeekView ? "Week" : "Season"} Win {primaryWinPctText}
+                  {isSeasonMM
+                    ? "Moneyline Mastery Score"
+                    : `${isWeekView ? "Week" : "Season"} Win ${primaryWinPctText}`}
                 </div>
-                <div className="text-[11px] sm:text-xs text-slate-500 mt-0.5">
-                  {isWeekView ? (
-                    <>
-                      Season {seasonRecordText} · {seasonWinPctText} · Streak{" "}
-                      {seasonStreakText}
-                    </>
-                  ) : (
-                    <>
-                      This week {weekRecordText} · Win {weekWinPctText} · Streak{" "}
-                      {seasonStreakText}
-                      {metricMode === "mm" && <> · MM {moneylineMasteryText}</>}
-                    </>
-                  )}
-                </div>
+                {!isSeasonMM && (
+                  <div className="text-[11px] sm:text-xs text-slate-500 mt-0.5">
+                    {isWeekView ? (
+                      <>
+                        Season {seasonRecordText} · {seasonWinPctText} · Streak {" "}
+                        {seasonStreakText}
+                      </>
+                    ) : (
+                      <>
+                        This week {weekRecordText} · Win {weekWinPctText} · Streak {" "}
+                        {seasonStreakText}
+                      </>
+                    )}
+                  </div>
+                )}
               </div>
             </li>
           );
