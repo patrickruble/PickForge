@@ -151,6 +151,20 @@ export default function UserProfile() {
   const [followVersion, setFollowVersion] = useState(0);
   const [followListType, setFollowListType] = useState<"followers" | "following" | null>(null);
 
+  // Viewer unit size (local to this browser). Used to show bet stakes in "units"
+  // instead of raw dollars when looking at someone else's profile.
+  const [viewerUnitSize, setViewerUnitSize] = useState<number | null>(null);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const stored = window.localStorage.getItem("pf_unit_size");
+    if (!stored) return;
+    const n = Number(stored);
+    if (Number.isFinite(n) && n > 0) {
+      setViewerUnitSize(n);
+    }
+  }, []);
+
   // Logged-in user, so we know if this is "my" profile
   useEffect(() => {
     let cancelled = false;
@@ -791,6 +805,11 @@ export default function UserProfile() {
         <div className="flex items-center justify-between mb-2">
           <h2 className="text-sm font-semibold text-slate-100">Recent bets</h2>
         </div>
+        {!isOwnProfile && viewerUnitSize && (
+          <p className="text-[10px] text-slate-500 mb-1">
+            Stakes and results shown in your units (1u = ${viewerUnitSize.toFixed(0)}).
+          </p>
+        )}
 
         {betsError && (
           <p className="text-xs text-rose-400">
@@ -853,7 +872,11 @@ export default function UserProfile() {
                             {b.odds_american}
                           </td>
                           <td className="px-3 py-2 text-right align-top">
-                            {Number(b.stake).toFixed(2)}
+                            {isOwnProfile
+                              ? `$${Number(b.stake).toFixed(2)}`
+                              : viewerUnitSize && viewerUnitSize > 0
+                              ? `${(Number(b.stake) / viewerUnitSize).toFixed(2)}u`
+                              : "—u"}
                           </td>
                           <td className="px-3 py-2 text-right align-top">
                             <span
@@ -865,8 +888,15 @@ export default function UserProfile() {
                                   : "text-slate-200"
                               }
                             >
-                              {b.result_amount >= 0 ? "+" : ""}
-                              {Number(b.result_amount).toFixed(2)}
+                              {isOwnProfile
+                                ? `${b.result_amount >= 0 ? "+" : ""}$${Number(
+                                    b.result_amount
+                                  ).toFixed(2)}`
+                                : viewerUnitSize && viewerUnitSize > 0
+                                ? `${(Number(b.result_amount) / viewerUnitSize).toFixed(
+                                    2
+                                  )}u`
+                                : "—u"}
                             </span>
                           </td>
                         </tr>
