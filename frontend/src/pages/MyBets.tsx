@@ -296,6 +296,53 @@ export default function MyBets() {
     return Array.from(sportMap.values()).sort((a, b) => b.total - a.total);
   }, [gradedBets]);
 
+  const breakdownByBetType = useMemo(() => {
+    if (!gradedBets.length)
+      return [] as {
+        bet_type: string;
+        total: number;
+        wins: number;
+        losses: number;
+        pushes: number;
+        net: number;
+      }[];
+
+    const map = new Map<
+      string,
+      {
+        bet_type: string;
+        total: number;
+        wins: number;
+        losses: number;
+        pushes: number;
+        net: number;
+      }
+    >();
+
+    for (const b of gradedBets) {
+      const key = (b.bet_type || "other").toLowerCase();
+      if (!map.has(key)) {
+        map.set(key, {
+          bet_type: key,
+          total: 0,
+          wins: 0,
+          losses: 0,
+          pushes: 0,
+          net: 0,
+        });
+      }
+
+      const entry = map.get(key)!;
+      entry.total += 1;
+      entry.net += b.result_amount;
+      if (b.status === "won") entry.wins += 1;
+      else if (b.status === "lost") entry.losses += 1;
+      else if (b.status === "push") entry.pushes += 1;
+    }
+
+    return Array.from(map.values()).sort((a, b) => b.total - a.total);
+  }, [gradedBets]);
+
   // 5) Form handlers
   function updateField<K extends keyof NewBetForm>(key: K, value: string) {
     setForm((prev) => ({ ...prev, [key]: value }));
@@ -632,6 +679,7 @@ export default function MyBets() {
               <option value="mlb">MLB</option>
               <option value="golf">Golf</option>
               <option value="soccer">Soccer</option>
+              <option value="multi">Multi-sport</option>
               <option value="other">Other</option>
             </select>
           </div>
@@ -859,6 +907,39 @@ export default function MyBets() {
                 </div>
               </div>
             )}
+            {!!breakdownByBetType.length && (
+              <div className="mt-3">
+                <p className="text-[10px] uppercase tracking-wide text-slate-500 mb-1">
+                  By bet type
+                </p>
+                <div className="flex flex-wrap gap-2 text-[11px]">
+                  {breakdownByBetType.map((t) => (
+                    <div
+                      key={t.bet_type}
+                      className="px-2 py-1 rounded-full border border-slate-700 bg-slate-900/80"
+                    >
+                      <span className="font-semibold text-slate-100">
+                        {t.bet_type}
+                      </span>{" "}
+                      {t.wins}-{t.losses}
+                      {t.pushes ? `-${t.pushes}` : ""} ·{" "}
+                      <span
+                        className={
+                          t.net > 0
+                            ? "text-emerald-400"
+                            : t.net < 0
+                            ? "text-rose-400"
+                            : "text-slate-200"
+                        }
+                      >
+                        {t.net >= 0 ? "+" : ""}
+                        ${t.net.toFixed(2)}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
           </>
         )}
       </section>
@@ -904,6 +985,7 @@ export default function MyBets() {
               <option value="mlb">MLB</option>
               <option value="golf">Golf</option>
               <option value="soccer">Soccer</option>
+              <option value="multi">Multi-sport</option>
               <option value="other">Other</option>
             </select>
           </div>
@@ -981,6 +1063,7 @@ export default function MyBets() {
               <option value="total">Total</option>
               <option value="parlay">Parlay</option>
               <option value="prop">Prop</option>
+              <option value="live">Live</option>
               <option value="other">Other</option>
             </select>
           </div>
@@ -1140,7 +1223,11 @@ export default function MyBets() {
                           {b.event_name}
                         </div>
                         <div className="text-[11px] text-slate-500">
-                          {b.sport.toUpperCase()}
+                          {b.sport === "multi"
+                            ? "Multi"
+                            : b.sport
+                            ? b.sport.toUpperCase()
+                            : "OTHER"}
                           {dateLabel ? ` • ${dateLabel}` : ""}
                           {b.book_name ? ` • ${b.book_name}` : ""}
                         </div>
