@@ -36,6 +36,13 @@ function getPrimaryDate(b: BetRow): Date | null {
   return null;
 }
 
+function toDateKey(d: Date): string {
+  const year = d.getFullYear();
+  const month = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
 export default function MyBets() {
   usePageSeo({
     title: "Bet Tracker — Log & Grade Your Sports Bets | PickForge",
@@ -86,6 +93,18 @@ export default function MyBets() {
   const [filterTime, setFilterTime] = useState<TimeFilter>("all");
   const [sortKey, setSortKey] = useState<SortKey>("created");
   const [sortDir, setSortDir] = useState<SortDir>("desc");
+
+  // Calendar view state (for daily ROI)
+  const [calendarMonth, setCalendarMonth] = useState<number>(() => {
+    const now = new Date();
+    return now.getMonth(); // 0-11
+  });
+  const [calendarYear, setCalendarYear] = useState<number>(() => {
+    const now = new Date();
+    return now.getFullYear();
+  });
+  // Selected calendar day in YYYY-MM-DD format (or null for no day filter)
+  const [selectedCalendarDate, setSelectedCalendarDate] = useState<string | null>(null);
 
   // 1) Load current user
   useEffect(() => {
@@ -251,6 +270,53 @@ export default function MyBets() {
       roi: +roi.toFixed(2),
     };
   }, [filteredAndSortedBets]);
+
+  // Daily aggregation for calendar (based on visible bets)
+  const dailyStats = useMemo(() => {
+    const map = new Map<
+      string,
+      { staked: number; net: number; total: number }
+    >();
+
+    for (const b of filteredAndSortedBets) {
+      const d = getPrimaryDate(b);
+      if (!d) continue;
+      const key = toDateKey(d);
+      if (!map.has(key)) {
+        map.set(key, { staked: 0, net: 0, total: 0 });
+      }
+      const entry = map.get(key)!;
+      entry.staked += b.stake;
+      entry.net += b.result_amount;
+      entry.total += 1;
+    }
+
+    return map;
+  }, [filteredAndSortedBets]);
+
+  // Bets for table:
+  // - If a calendar day is selected, show all bets from that day.
+  // - Otherwise, prefer all pending, else most recent 5 (from filtered/sorted).
+  const betsForTable = useMemo(() => {
+    if (!filteredAndSortedBets.length) return [] as BetRow[];
+
+    if (selectedCalendarDate) {
+      return filteredAndSortedBets.filter((b) => {
+        const d = getPrimaryDate(b);
+        if (!d) return false;
+        return toDateKey(d) === selectedCalendarDate;
+      });
+    }
+
+    // Prefer showing all pending bets
+    const pending = filteredAndSortedBets.filter((b) => b.status === "pending");
+    if (pending.length > 0) {
+      return pending;
+    }
+
+    // If there are no pending bets, show the most recent 5 (already sorted)
+    return filteredAndSortedBets.slice(0, 5);
+  }, [filteredAndSortedBets, selectedCalendarDate]);
 
   // 4b) Graded bets + breakdown by sport (based on visible bets)
   const gradedBets = useMemo(
@@ -526,58 +592,6 @@ export default function MyBets() {
       setSaving(false);
     }
   }
-  const breakdownByTeam = useMemo(() => {
-    if (!gradedBets.length)
-      return [] as {
-        team: string;
-        total: number;
-        wins: number;
-        losses: number;
-        pushes: number;
-        net: number;
-      }[];
-
-    const map = new Map<
-      string,
-      {
-        team: string;
-        total: number;
-        wins: number;
-        losses: number;
-        pushes: number;
-        net: number;
-      }
-    >();
-
-    for (const b of gradedBets) {
-      const raw = (b.selection || "").trim();
-      if (!raw) continue;
-
-      // Rough team key: first token of the selection
-      const firstToken = raw.split(/\s+/)[0]?.toUpperCase() || "OTHER";
-      const key = firstToken;
-
-      if (!map.has(key)) {
-        map.set(key, {
-          team: key,
-          total: 0,
-          wins: 0,
-          losses: 0,
-          pushes: 0,
-          net: 0,
-        });
-      }
-
-      const entry = map.get(key)!;
-      entry.total += 1;
-      entry.net += b.result_amount;
-      if (b.status === "won") entry.wins += 1;
-      else if (b.status === "lost") entry.losses += 1;
-      else if (b.status === "push") entry.pushes += 1;
-    }
-
-    return Array.from(map.values()).sort((a, b) => b.total - a.total);
-  }, [gradedBets]);
 
   async function handleStatusChange(bet: BetRow, newStatus: BetStatus) {
     if (bet.status === newStatus) return;
@@ -655,6 +669,43 @@ export default function MyBets() {
   const visibleCount = filteredAndSortedBets.length;
   const totalCount = bets.length;
   const isEditing = !!editingBet;
+
+  const selectedDateLabel = selectedCalendarDate
+    ? new Date(selectedCalendarDate).toLocaleDateString(undefined, {
+        month: "short",
+        day: "numeric",
+        year: "numeric",
+      })
+    : null;
+
+  const monthDate = new Date(calendarYear, calendarMonth, 1);
+  const monthLabel = monthDate.toLocaleDateString(undefined, {
+    month: "long",
+    year: "numeric",
+  });
+  const daysInMonth = new Date(calendarYear, calendarMonth + 1, 0).getDate();
+  const startWeekday = monthDate.getDay(); // 0 (Sun) - 6 (Sat)
+
+  function changeMonth(delta: number) {
+    setCalendarMonth((prevMonth) => {
+      let newMonth = prevMonth + delta;
+      let newYear = calendarYear;
+
+      if (newMonth < 0) {
+        newMonth = 11;
+        newYear = calendarYear - 1;
+      } else if (newMonth > 11) {
+        newMonth = 0;
+        newYear = calendarYear + 1;
+      }
+
+      if (newYear !== calendarYear) {
+        setCalendarYear(newYear);
+      }
+
+      return newMonth;
+    });
+  }
 
   return (
     <div className="max-w-5xl mx-auto px-4 py-8 text-slate-200">
@@ -869,6 +920,110 @@ export default function MyBets() {
 
       {/* Betting breakdown based on current filters */}
       <section className="mb-4 bg-slate-950/80 border border-slate-800 rounded-2xl p-3 sm:p-4">
+      {/* Daily ROI calendar */}
+      <section className="mb-6 bg-slate-950/80 border border-slate-800 rounded-2xl p-3 sm:p-4">
+        <div className="flex items-center justify-between mb-2">
+          <h2 className="text-sm font-semibold text-slate-100">
+            Daily ROI (calendar view)
+          </h2>
+          <div className="flex items-center gap-2 text-[11px] text-slate-300">
+            <button
+              type="button"
+              onClick={() => changeMonth(-1)}
+              className="px-2 py-1 rounded-full bg-slate-900/80 border border-slate-700/80 hover:text-slate-100"
+            >
+              ◀
+            </button>
+            <span className="font-medium text-slate-100">{monthLabel}</span>
+            <button
+              type="button"
+              onClick={() => changeMonth(1)}
+              className="px-2 py-1 rounded-full bg-slate-900/80 border border-slate-700/80 hover:text-slate-100"
+            >
+              ▶
+            </button>
+          </div>
+        </div>
+
+        <p className="text-[11px] text-slate-500 mb-2">
+          Each day shows ROI based on the bets in this view. Click a day to see all bets from that date. Click again to clear.
+        </p>
+
+        <div className="grid grid-cols-7 gap-1 text-[10px] sm:text-[11px] mb-2 text-slate-400">
+          <div className="text-center">Sun</div>
+          <div className="text-center">Mon</div>
+          <div className="text-center">Tue</div>
+          <div className="text-center">Wed</div>
+          <div className="text-center">Thu</div>
+          <div className="text-center">Fri</div>
+          <div className="text-center">Sat</div>
+        </div>
+
+        <div className="grid grid-cols-7 gap-1 text-[11px]">
+          {Array.from({ length: startWeekday + daysInMonth }).map((_, idx) => {
+            if (idx < startWeekday) {
+              return <div key={idx} className="h-10 sm:h-11" />;
+            }
+
+            const dayNum = idx - startWeekday + 1;
+            const dateObj = new Date(calendarYear, calendarMonth, dayNum);
+            const key = toDateKey(dateObj);
+            const stats = dailyStats.get(key);
+            const hasBets = !!stats;
+            const roi =
+              stats && stats.staked > 0 ? (stats.net / stats.staked) * 100 : 0;
+
+            let bgClass =
+              "bg-slate-900/70 border border-slate-800 text-slate-300";
+            if (hasBets) {
+              if (roi > 0.5) {
+                bgClass =
+                  "bg-emerald-500/15 border border-emerald-500/60 text-emerald-200";
+              } else if (roi < -0.5) {
+                bgClass =
+                  "bg-rose-500/15 border border-rose-500/60 text-rose-200";
+              } else {
+                bgClass =
+                  "bg-slate-700/70 border border-slate-600 text-slate-100";
+              }
+            }
+
+            const isSelected = selectedCalendarDate === key;
+
+            return (
+              <button
+                key={idx}
+                type="button"
+                onClick={() =>
+                  setSelectedCalendarDate((prev) => (prev === key ? null : key))
+                }
+                className={
+                  "h-10 sm:h-11 rounded-lg flex flex-col items-center justify-center px-0.5 text-[10px] sm:text-[11px] transition " +
+                  bgClass +
+                  (isSelected
+                    ? " ring-2 ring-yellow-400 ring-offset-2 ring-offset-slate-950"
+                    : "")
+                }
+              >
+                <span className="font-semibold">{dayNum}</span>
+                <span className="text-[9px] sm:text-[10px]">
+                  {hasBets && stats
+                    ? `${roi >= 0 ? "+" : ""}${roi.toFixed(0)}%`
+                    : "—"}
+                </span>
+              </button>
+            );
+          })}
+        </div>
+
+        {selectedDateLabel && (
+          <p className="mt-2 text-[11px] text-slate-400">
+            Showing bets for{" "}
+            <span className="font-semibold">{selectedDateLabel}</span> in the
+            table below.
+          </p>
+        )}
+      </section>
         <div className="flex items-center justify-between mb-2">
           <h2 className="text-sm font-semibold text-slate-100">
             Betting breakdown
@@ -1014,39 +1169,6 @@ export default function MyBets() {
                 </div>
               </div>
             )}
-            {!!breakdownByTeam.length && (
-              <div className="mt-3">
-                <p className="text-[10px] uppercase tracking-wide text-slate-500 mb-1">
-                  By team (experimental)
-                </p>
-                <div className="flex flex-wrap gap-2 text-[11px]">
-                  {breakdownByTeam.map((t) => (
-                    <div
-                      key={t.team}
-                      className="px-2 py-1 rounded-full border border-slate-700 bg-slate-900/80"
-                    >
-                      <span className="font-semibold text-slate-100">
-                        {t.team}
-                      </span>{" "}
-                      {t.wins}-{t.losses}
-                      {t.pushes ? `-${t.pushes}` : ""} ·{" "}
-                      <span
-                        className={
-                          t.net > 0
-                            ? "text-emerald-400"
-                            : t.net < 0
-                            ? "text-rose-400"
-                            : "text-slate-200"
-                        }
-                      >
-                        {t.net >= 0 ? "+" : ""}
-                        ${t.net.toFixed(2)}
-                      </span>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
           </>
         )}
       </section>
@@ -1169,8 +1291,10 @@ export default function MyBets() {
               <option value="moneyline">Moneyline</option>
               <option value="total">Total</option>
               <option value="parlay">Parlay</option>
+              <option value="player_prop_parlay">Player Prop Parlay</option>
               <option value="prop">Prop</option>
               <option value="live">Live</option>
+              <option value="alt">Alt</option>
               <option value="other">Other</option>
             </select>
           </div>
@@ -1320,15 +1444,14 @@ export default function MyBets() {
       {/* Bets list */}
       <section>
         <h2 className="text-sm font-semibold text-slate-100 mb-3">
-          Your bets
+          {selectedDateLabel ? `Your bets — ${selectedDateLabel}` : "Your bets"}
         </h2>
 
         {loading ? (
           <p className="text-sm text-slate-400">Loading bets...</p>
-        ) : !filteredAndSortedBets.length ? (
+        ) : !betsForTable.length ? (
           <p className="text-sm text-slate-400">
-            No bets match your filters. Try changing sport, status, or time
-            window.
+            No pending or recent bets match your filters. Try changing sport, status, or time window.
           </p>
         ) : (
           <div className="overflow-x-auto rounded-2xl border border-slate-800 bg-slate-950/80">
@@ -1347,7 +1470,7 @@ export default function MyBets() {
                 </tr>
               </thead>
               <tbody>
-                {filteredAndSortedBets.map((b) => {
+                {betsForTable.map((b) => {
                   const dateLabel = b.event_date
                     ? new Date(b.event_date).toLocaleDateString()
                     : b.created_at
