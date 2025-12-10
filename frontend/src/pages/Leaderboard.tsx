@@ -103,9 +103,7 @@ export default function Leaderboard() {
   const [viewMode, setViewMode] = useState<"week" | "season">("week");
 
   // Metric mode: standard (win%) vs Moneyline Mastery
-  const [metricMode, setMetricMode] = useState<"standard" | "mm">(
-    "standard"
-  );
+  const [metricMode, setMetricMode] = useState<"standard" | "mm">("standard");
 
   // Search term for players
   const [searchTerm, setSearchTerm] = useState("");
@@ -194,7 +192,7 @@ export default function Leaderboard() {
     };
   }, [selectedWeek]);
 
-  // Weekly aggregated leaderboard
+  // Weekly aggregated leaderboard (graded picks only)
   const weekAggregated: LeaderItem[] = useMemo(() => {
     const stats = new Map<string, LeaderItem>();
 
@@ -266,15 +264,81 @@ export default function Leaderboard() {
     return list.slice(0, 100);
   }, [statsByUser, profilesMap]);
 
-  // For loading profiles, consider both week and season users
+  // All users who have any picks for the selected week (spread or ML)
+  const weekParticipants: string[] = useMemo(() => {
+    const set = new Set<string>();
+    for (const r of rows) {
+      set.add(r.user_id);
+    }
+    return Array.from(set);
+  }, [rows]);
+
+  // Week view: show all players who picked this week, ordered by season standings
+  const weekViewAggregated: LeaderItem[] = useMemo(() => {
+    if (!weekParticipants.length) return [];
+
+    const participantSet = new Set(weekParticipants);
+    const list: LeaderItem[] = [];
+
+    // First: players who have season stats, in season order
+    for (const item of seasonAggregated) {
+      if (participantSet.has(item.user_id)) {
+        list.push(item);
+      }
+    }
+
+    // Then: players who picked this week but have no graded season picks yet
+    const alreadyIncluded = new Set(list.map((i) => i.user_id));
+    for (const user_id of weekParticipants) {
+      if (!alreadyIncluded.has(user_id)) {
+        list.push({
+          user_id,
+          wins: 0,
+          losses: 0,
+          pushes: 0,
+          total: 0,
+          winPct: 0,
+          profile: profilesMap[user_id],
+        });
+      }
+    }
+
+    return list;
+  }, [weekParticipants, seasonAggregated, profilesMap]);
+
+  // For loading profiles, consider week users, season users, and anyone with picks this week
   const allAggregatedForProfiles: LeaderItem[] = useMemo(() => {
     const map = new Map<string, LeaderItem>();
-    for (const item of weekAggregated) map.set(item.user_id, item);
-    for (const item of seasonAggregated) {
-      if (!map.has(item.user_id)) map.set(item.user_id, item);
+
+    // Anyone with weekly graded stats
+    for (const item of weekAggregated) {
+      map.set(item.user_id, item);
     }
+
+    // Anyone with season stats
+    for (const item of seasonAggregated) {
+      if (!map.has(item.user_id)) {
+        map.set(item.user_id, item);
+      }
+    }
+
+    // Anyone who has any pick this week (even if all pending)
+    for (const r of rows) {
+      if (!map.has(r.user_id)) {
+        map.set(r.user_id, {
+          user_id: r.user_id,
+          wins: 0,
+          losses: 0,
+          pushes: 0,
+          total: 0,
+          winPct: 0,
+          profile: profilesMap[r.user_id],
+        });
+      }
+    }
+
     return Array.from(map.values());
-  }, [weekAggregated, seasonAggregated]);
+  }, [weekAggregated, seasonAggregated, rows, profilesMap]);
 
   // Load profiles for any user ids we do not know yet
   useEffect(() => {
@@ -323,7 +387,7 @@ export default function Leaderboard() {
   }, [allAggregatedForProfiles, profilesMap]);
 
   const activeAggregated: LeaderItem[] = useMemo(() => {
-    if (viewMode === "week") return weekAggregated;
+    if (viewMode === "week") return weekViewAggregated;
 
     // For season view, allow toggling between standard (win%) and Moneyline Mastery sorting
     const base = [...seasonAggregated];
@@ -357,7 +421,7 @@ export default function Leaderboard() {
     }
 
     return base;
-  }, [viewMode, weekAggregated, seasonAggregated, metricMode, statsByUser]);
+  }, [viewMode, weekViewAggregated, seasonAggregated, metricMode, statsByUser]);
 
   // Tie-aware rank map (same stats share rank; next rank skips)
   const rankMap = useMemo(() => {
@@ -583,12 +647,12 @@ export default function Leaderboard() {
         </div>
       </header>
 
-      {/* Hint when this week is empty but season has data */}
+      {/* Hint when this week has no graded games yet */}
       {isWeekView && !weekAggregated.length && seasonAggregated.length > 0 && (
         <p className="text-[11px] sm:text-xs text-slate-500 mb-2">
-          No graded games yet for Week {selectedWeek}. Switch to{" "}
-          <span className="font-semibold text-slate-200">Season</span> to see
-          full standings.
+          No graded games have finished yet for Week {selectedWeek}. Players
+          below are ordered by their season standings. Week records will update
+          once games go final.
         </p>
       )}
 
