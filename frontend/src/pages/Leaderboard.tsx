@@ -125,6 +125,10 @@ export default function Leaderboard() {
     {}
   );
 
+  const [copyStatus, setCopyStatus] = useState<"idle" | "share" | "invite">(
+    "idle"
+  );
+
 
   // Search term for players
   const [searchTerm, setSearchTerm] = useState("");
@@ -586,18 +590,51 @@ export default function Leaderboard() {
       url.searchParams.set("metric", metricMode);
       url.searchParams.set("share", "1");
 
+      const text = url.toString();
+
       if (navigator.clipboard && navigator.clipboard.writeText) {
-        navigator.clipboard.writeText(url.toString());
+        navigator.clipboard.writeText(text);
       } else {
         const textArea = document.createElement("textarea");
-        textArea.value = url.toString();
+        textArea.value = text;
         document.body.appendChild(textArea);
         textArea.select();
         document.execCommand("copy");
         document.body.removeChild(textArea);
       }
+
+      setCopyStatus("share");
+      window.setTimeout(() => setCopyStatus("idle"), 2000);
     } catch (err) {
       console.error("[Leaderboard] failed to copy share link", err);
+    }
+  };
+
+  const handleCopyInviteLink = () => {
+    if (typeof window === "undefined") return;
+
+    try {
+      const url = new URL(window.location.origin);
+      url.pathname = "/leaderboard";
+      url.searchParams.set("share", "1");
+
+      const text = url.toString();
+
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(text);
+      } else {
+        const textArea = document.createElement("textarea");
+        textArea.value = text;
+        document.body.appendChild(textArea);
+        textArea.select();
+        document.execCommand("copy");
+        document.body.removeChild(textArea);
+      }
+
+      setCopyStatus("invite");
+      window.setTimeout(() => setCopyStatus("idle"), 2000);
+    } catch (err) {
+      console.error("[Leaderboard] failed to copy invite link", err);
     }
   };
 
@@ -763,15 +800,24 @@ export default function Leaderboard() {
             </button>
           </div>
 
-          {/* Share / Search controls */}
+          {/* Share / Invite / Search controls */}
           {!isShareMode && (
-            <button
-              type="button"
-              onClick={handleCopyShareLink}
-              className="px-2.5 py-1 rounded-full bg-slate-900/80 border border-slate-700/80 text-[11px] sm:text-xs text-slate-300 hover:text-slate-100"
-            >
-              Share leaderboard
-            </button>
+            <>
+              <button
+                type="button"
+                onClick={handleCopyShareLink}
+                className="px-2.5 py-1 rounded-full bg-slate-900/80 border border-slate-700/80 text-[11px] sm:text-xs text-slate-300 hover:text-slate-100"
+              >
+                Share leaderboard
+              </button>
+              <button
+                type="button"
+                onClick={handleCopyInviteLink}
+                className="px-2.5 py-1 rounded-full bg-emerald-900/40 border border-emerald-500/60 text-[11px] sm:text-xs text-emerald-100 hover:text-emerald-50"
+              >
+                Invite friends
+              </button>
+            </>
           )}
           {isShareMode && (
             <div className="px-2.5 py-1 rounded-full bg-emerald-900/40 border border-emerald-500/60 text-[11px] sm:text-xs text-emerald-200">
@@ -789,6 +835,14 @@ export default function Leaderboard() {
                 placeholder="Search players"
                 className="w-full rounded-full bg-slate-900/80 border border-slate-700/80 px-3 py-1 text-[11px] sm:text-xs text-slate-100 placeholder-slate-500 focus:outline-none focus:ring-1 focus:ring-yellow-400"
               />
+            </div>
+          )}
+
+          {copyStatus !== "idle" && (
+            <div className="text-[10px] sm:text-[11px] text-emerald-300">
+              {copyStatus === "share"
+                ? "Leaderboard link copied!"
+                : "Invite link copied!"}
             </div>
           )}
         </div>
