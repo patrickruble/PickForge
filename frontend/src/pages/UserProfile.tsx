@@ -473,6 +473,26 @@ export default function UserProfile() {
     error: betsError,
   } = useProfileBets(profile?.id ?? null);
 
+  const displayBets = useMemo(() => {
+    if (!profileBets || !profileBets.length) return [];
+    const pending = profileBets.filter((b: any) => b.status === "pending");
+    const nonPending = profileBets.filter((b: any) => b.status !== "pending");
+
+    const sortByDateDesc = (a: any, b: any) => {
+      const aDate = a.event_date || a.created_at;
+      const bDate = b.event_date || b.created_at;
+      const aTime = aDate ? new Date(aDate).getTime() : 0;
+      const bTime = bDate ? new Date(bDate).getTime() : 0;
+      return bTime - aTime;
+    };
+
+    pending.sort(sortByDateDesc);
+    nonPending.sort(sortByDateDesc);
+
+    // Pending bets first, then most recent closed bets, cap at 5 total
+    return [...pending, ...nonPending].slice(0, 5);
+  }, [profileBets]);
+
   // ---------- LOADING / ERROR STATES ----------
 
   if (statsLoading || profileLoading) {
@@ -549,6 +569,7 @@ export default function UserProfile() {
           stats.mlPushes ? `-${stats.mlPushes}` : ""
         }`
       : "0-0";
+
 
   return (
     <div className="max-w-4xl mx-auto px-4 py-10 text-slate-200">
@@ -878,9 +899,9 @@ export default function UserProfile() {
         <div className="flex items-center justify-between mb-2">
           <h2 className="text-sm font-semibold text-slate-100">Recent bets</h2>
         </div>
-        {!isOwnProfile && viewerUnitSize && (
+        {viewerUnitSize && (
           <p className="text-[10px] text-slate-500 mb-1">
-            Stakes and results shown in your units (1u = ${viewerUnitSize.toFixed(0)}).
+            Stakes and results are shown in units (u) instead of dollars.
           </p>
         )}
 
@@ -894,7 +915,7 @@ export default function UserProfile() {
           <>
             {betsLoading ? (
               <p className="text-xs text-slate-500">Loading bets…</p>
-            ) : !profileBets.length ? (
+            ) : !displayBets.length ? (
               <p className="text-xs text-slate-500">
                 No public bets to show. This player may keep their bet log
                 private or has not logged anything yet.
@@ -907,17 +928,27 @@ export default function UserProfile() {
                       <th className="px-3 py-2 text-left">Event</th>
                       <th className="px-3 py-2 text-left">Selection</th>
                       <th className="px-3 py-2 text-right">Odds</th>
-                      <th className="px-3 py-2 text-right">Stake</th>
+                      <th className="px-3 py-2 text-right">Units</th>
                       <th className="px-3 py-2 text-right">Result</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {profileBets.slice(0, 10).map((b: any) => {
+                    {displayBets.map((b: any) => {
                       const dateLabel = b.event_date
                         ? new Date(b.event_date).toLocaleDateString()
                         : b.created_at
                         ? new Date(b.created_at).toLocaleDateString()
                         : "";
+                      const unitSize =
+                        viewerUnitSize && viewerUnitSize > 0
+                          ? viewerUnitSize
+                          : null;
+                      const stakeUnits = unitSize
+                        ? Number(b.stake) / unitSize
+                        : null;
+                      const resultUnits = unitSize
+                        ? Number(b.result_amount) / unitSize
+                        : null;
 
                       return (
                         <tr
@@ -945,10 +976,8 @@ export default function UserProfile() {
                             {b.odds_american}
                           </td>
                           <td className="px-3 py-2 text-right align-top">
-                            {isOwnProfile
-                              ? `$${Number(b.stake).toFixed(2)}`
-                              : viewerUnitSize && viewerUnitSize > 0
-                              ? `${(Number(b.stake) / viewerUnitSize).toFixed(2)}u`
+                            {stakeUnits !== null
+                              ? `${stakeUnits.toFixed(2)}u`
                               : "—u"}
                           </td>
                           <td className="px-3 py-2 text-right align-top">
@@ -961,14 +990,8 @@ export default function UserProfile() {
                                   : "text-slate-200"
                               }
                             >
-                              {isOwnProfile
-                                ? `${b.result_amount >= 0 ? "+" : ""}$${Number(
-                                    b.result_amount
-                                  ).toFixed(2)}`
-                                : viewerUnitSize && viewerUnitSize > 0
-                                ? `${(Number(b.result_amount) / viewerUnitSize).toFixed(
-                                    2
-                                  )}u`
+                              {resultUnits !== null
+                                ? `${resultUnits >= 0 ? "+" : ""}${resultUnits.toFixed(2)}u`
                                 : "—u"}
                             </span>
                           </td>
