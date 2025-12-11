@@ -2,7 +2,7 @@
 import { useEffect, useState, useMemo } from "react";
 import { Link } from "react-router-dom";
 import { supabase } from "../lib/supabase";
-import { getNflWeekNumber } from "../hooks/useRemotePicks";
+import { getNflWeekNumber, currentNflWeekWindow } from "../hooks/useRemotePicks";
 
 type FollowRow = {
   follower_id: string;
@@ -35,6 +35,34 @@ type FeedPickRow = {
   picked_snapshot?: PickSnapshot | null;
 };
 
+type FeedBetRow = {
+  id: string;
+  user_id: string;
+  event_name: string;
+  selection: string;
+  odds_american: number | null;
+  stake: number;
+  result_amount: number;
+  status: string;
+  event_date: string | null;
+  created_at: string;
+};
+
+type GameAggregate = {
+  gameId: string;
+  week: number;
+  commence_at: string;
+  home: string;
+  away: string;
+  total: number;
+  homeCount: number;
+  awayCount: number;
+  homePct: number;
+  awayPct: number;
+  followersHome: BasicProfile[];
+  followersAway: BasicProfile[];
+};
+
 type BasicProfile = {
   id: string;
   username: string | null;
@@ -42,13 +70,24 @@ type BasicProfile = {
 };
 
 type Scope = "everyone" | "following" | "leagues";
+
 type WindowMode = "week" | "season";
+
+type FeedItem =
+  | { kind: "pick"; pick: FeedPickRow }
+  | { kind: "bet"; bet: FeedBetRow };
 
 const fmtSigned = (n: number | null | undefined) =>
   typeof n === "number" ? (n > 0 ? `+${n}` : `${n}`) : "—";
 
 export default function Feed() {
   const [uid, setUid] = useState<string | null>(null);
+
+  // Viewer unit size for displaying bets in "u" instead of dollars
+  const [unitSize, setUnitSize] = useState<number | null>(null);
+
+  // Which users I follow (for highlighting in game splits)
+  const [followingIds, setFollowingIds] = useState<string[]>([]);
 
   // Filters
   const [scope, setScope] = useState<Scope>("following");
@@ -57,12 +96,59 @@ export default function Feed() {
   // Data
   const [people, setPeople] = useState<BasicProfile[]>([]);
   const [picks, setPicks] = useState<FeedPickRow[]>([]);
+  const [bets, setBets] = useState<FeedBetRow[]>([]);
 
   // Status
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   const weekNum = getNflWeekNumber(new Date());
+
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem("pf_unit_size");
+      if (!raw) return;
+      const n = Number(raw);
+      if (!Number.isNaN(n) && n > 0) {
+        setUnitSize(n);
+      }
+    } catch {
+      // ignore localStorage errors
+    }
+  }, []);
+
+  // Load list of users I follow (used to highlight them in game splits)
+  useEffect(() => {
+    if (!uid) {
+      setFollowingIds([]);
+      return;
+    }
+
+    let cancelled = false;
+
+    (async () => {
+      const { data, error } = await supabase
+        .from("follows")
+        .select("follower_id, following_id")
+        .eq("follower_id", uid);
+
+      if (cancelled) return;
+
+      if (error) {
+        console.error("[Feed] follows-for-highlight error:", error);
+        setFollowingIds([]);
+        return;
+      }
+
+      const rows = (data ?? []) as FollowRow[];
+      const ids = Array.from(new Set(rows.map((r) => r.following_id)));
+      setFollowingIds(ids);
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [uid]);
 
   // 1) Get current authed user
   useEffect(() => {
@@ -90,6 +176,7 @@ export default function Feed() {
       setLoading(false);
       setPeople([]);
       setPicks([]);
+      setBets([]);
       return;
     }
 
@@ -104,6 +191,7 @@ export default function Feed() {
 
         let userIds: string[] | null = null;
         let scopedProfiles: BasicProfile[] = [];
+        let mutualIds: string[] = [];
 
         // ----- A) Figure out which users we care about, per scope -----
         if (scope === "following") {
@@ -142,6 +230,21 @@ export default function Feed() {
           }
 
           scopedProfiles = (profiles ?? []) as BasicProfile[];
+
+          // Which of these follow you back? Mutuals only.
+          const { data: mutualRows, error: mutualError } = await supabase
+            .from("follows")
+            .select("follower_id, following_id")
+            .in("follower_id", userIds)
+            .eq("following_id", uid);
+
+          if (mutualError) {
+            console.error("[Feed] mutuals error:", mutualError);
+          } else if (mutualRows) {
+            mutualIds = Array.from(
+              new Set((mutualRows as FollowRow[]).map((r) => r.follower_id))
+            );
+          }
         } else if (scope === "leagues") {
           // Find leagues I'm in
           const { data: myLeagueRows, error: myLeagueError } = await supabase
@@ -262,9 +365,36 @@ export default function Feed() {
           scopedProfiles = (profiles ?? []) as BasicProfile[];
         }
 
+        // C) Load bets for mutual followers (only in Following scope)
+        let betsRows: FeedBetRow[] = [];
+        if (scope === "following" && mutualIds.length) {
+          let betsQuery = supabase
+            .from("bets")
+            .select(
+              "id, user_id, event_name, selection, odds_american, stake, result_amount, status, event_date, created_at"
+            )
+            .in("user_id", mutualIds)
+            .order("event_date", { ascending: false });
+
+          if (windowMode === "week") {
+            const { weekStart, weekEnd } = currentNflWeekWindow(new Date());
+            betsQuery = betsQuery
+              .gte("event_date", weekStart.toISOString())
+              .lte("event_date", weekEnd.toISOString());
+          }
+
+          const { data: betsData, error: betsError } = await betsQuery;
+          if (betsError) {
+            console.error("[Feed] bets error:", betsError);
+          } else {
+            betsRows = (betsData ?? []) as FeedBetRow[];
+          }
+        }
+
         if (!cancelled) {
           setPeople(scopedProfiles);
           setPicks(pickedRows);
+          setBets(betsRows);
         }
       } finally {
         if (!cancelled) setLoading(false);
@@ -294,6 +424,99 @@ export default function Feed() {
   })();
 
   const windowLabel = windowMode === "week" ? `Week ${weekNum}` : "All Season";
+
+  const games = useMemo<GameAggregate[]>(() => {
+    if (!picks.length) return [];
+
+    const followingSet = new Set(followingIds);
+    const map = new Map<
+      string,
+      {
+        gameId: string;
+        week: number;
+        commence_at: string;
+        home: string;
+        away: string;
+        total: number;
+        homeCount: number;
+        awayCount: number;
+        followersHomeIds: Set<string>;
+        followersAwayIds: Set<string>;
+      }
+    >();
+
+    for (const p of picks) {
+      let g = map.get(p.game_id);
+      if (!g) {
+        const snap = (p.picked_snapshot ?? {}) as PickSnapshot;
+        g = {
+          gameId: p.game_id,
+          week: p.week,
+          commence_at: p.commence_at,
+          home: snap.home ?? "HOME",
+          away: snap.away ?? "AWAY",
+          total: 0,
+          homeCount: 0,
+          awayCount: 0,
+          followersHomeIds: new Set<string>(),
+          followersAwayIds: new Set<string>(),
+        };
+        map.set(p.game_id, g);
+      }
+
+      g.total += 1;
+
+      if (p.side === "home") {
+        g.homeCount += 1;
+        if (followingSet.has(p.user_id)) {
+          g.followersHomeIds.add(p.user_id);
+        }
+      } else {
+        g.awayCount += 1;
+        if (followingSet.has(p.user_id)) {
+          g.followersAwayIds.add(p.user_id);
+        }
+      }
+    }
+
+    const out: GameAggregate[] = [];
+
+    for (const g of map.values()) {
+      const homePct = g.total ? (g.homeCount / g.total) * 100 : 0;
+      const awayPct = g.total ? (g.awayCount / g.total) * 100 : 0;
+
+      const followersHome = Array.from(g.followersHomeIds)
+        .map((id) => profileById.get(id))
+        .filter(Boolean) as BasicProfile[];
+
+      const followersAway = Array.from(g.followersAwayIds)
+        .map((id) => profileById.get(id))
+        .filter(Boolean) as BasicProfile[];
+
+      out.push({
+        gameId: g.gameId,
+        week: g.week,
+        commence_at: g.commence_at,
+        home: g.home,
+        away: g.away,
+        total: g.total,
+        homeCount: g.homeCount,
+        awayCount: g.awayCount,
+        homePct,
+        awayPct,
+        followersHome,
+        followersAway,
+      });
+    }
+
+    out.sort(
+      (a, b) =>
+        new Date(b.commence_at).getTime() -
+        new Date(a.commence_at).getTime()
+    );
+
+    return out;
+  }, [picks, followingIds, profileById]);
 
   // ---------- UI STATES ----------
 
@@ -367,7 +590,7 @@ export default function Feed() {
     );
   }
 
-  if (!picks.length) {
+  if (!picks.length && !bets.length) {
     const emptyTextByScope: Record<Scope, string> = {
       following:
         "None of the people you follow have graded picks for this window yet.",
@@ -443,87 +666,228 @@ export default function Feed() {
           />
           <div className="text-[11px] sm:text-xs text-slate-400">
             <span className="font-semibold text-slate-100">
-              {picks.length}
+              {games.length}
             </span>{" "}
-            picks shown.
+            games with graded picks
+            {scope === "following" && bets.length > 0 && (
+              <>
+                {" "}
+                ·{" "}
+                <span className="font-semibold text-slate-100">
+                  {bets.length}
+                </span>{" "}
+                mutual bets
+              </>
+            )}
+            .
           </div>
         </div>
       </header>
 
-      <ul className="space-y-3">
-        {picks.map((p) => {
-          const prof = profileById.get(p.user_id);
-          const snap = (p.picked_snapshot ?? {}) as PickSnapshot;
-          const home = snap.home ?? "HOME";
-          const away = snap.away ?? "AWAY";
-          const when = new Date(p.commence_at).toLocaleString();
+      {/* Mutuals' bets section (Following scope only) */}
+      {scope === "following" && bets.length > 0 && (
+        <section className="mb-6">
+          <h2 className="text-[11px] uppercase tracking-wide text-slate-400 mb-2">
+            Mutuals' Bets (Units)
+          </h2>
+          <ul className="space-y-3">
+            {bets.map((b) => {
+              const prof = profileById.get(b.user_id);
+              const when = (b.event_date || b.created_at)
+                ? new Date(b.event_date || b.created_at).toLocaleString()
+                : "";
 
-          const pickedTeam = p.side === "home" ? home : away;
+              const handleUrlSlug =
+                prof?.username && prof.username.trim().length > 0
+                  ? prof.username.trim()
+                  : prof?.id ?? b.user_id;
 
-          let lineLabel = "";
-          if (p.picked_price_type === "spread") {
-            lineLabel = `Spread ${fmtSigned(p.picked_price ?? null)}`;
-          } else if (p.picked_price_type === "ml") {
-            lineLabel = `ML ${fmtSigned(p.picked_price ?? null)}`;
-          } else {
-            lineLabel = "(line unavailable)";
-          }
+              const effectiveUnitSize =
+                unitSize && unitSize > 0 ? unitSize : null;
+              const stakeUnits = effectiveUnitSize
+                ? Number(b.stake) / effectiveUnitSize
+                : null;
+              const resultUnits = effectiveUnitSize
+                ? Number(b.result_amount) / effectiveUnitSize
+                : null;
 
-          const handleUrlSlug =
-            prof?.username && prof.username.trim().length > 0
-              ? prof.username.trim()
-              : prof?.id ?? p.user_id;
+              const statusLabel = b.status === "pending" ? "Pending" : b.status;
 
-          return (
-            <li
-              key={`${p.user_id}-${p.game_id}-${p.side}`}
-              className="rounded-2xl p-3 sm:p-4 bg-slate-950/80 border border-slate-800 shadow-sm shadow-black/30"
-            >
-              <div className="flex items-start justify-between gap-3">
-                {/* Left: user avatar + name */}
-                <Link
-                  to={`/u/${handleUrlSlug}`}
-                  className="flex items-center gap-2 sm:gap-3"
+              return (
+                <li
+                  key={`bet-${b.id}`}
+                  className="rounded-2xl p-3 sm:p-4 bg-slate-950/80 border border-slate-800 shadow-sm shadow-black/30"
                 >
-                  <div className="w-8 h-8 rounded-full overflow-hidden bg-slate-700 flex items-center justify-center text-xs font-semibold text-slate-100 border border-slate-600">
-                    {prof?.avatar_url ? (
-                      <img
-                        src={prof.avatar_url}
-                        alt={prof.username ?? "User"}
-                        className="w-full h-full object-cover"
-                      />
-                    ) : (
-                      (prof?.username?.[0] ?? "U").toUpperCase()
-                    )}
-                  </div>
-                  <div className="flex flex-col">
-                    <span className="text-sm font-semibold text-slate-100">
-                      {prof?.username ?? `user_${p.user_id.slice(0, 6)}`}
-                    </span>
-                    <span className="text-[11px] text-slate-500">
-                      Game kicked off {when}
-                    </span>
-                  </div>
-                </Link>
+                  <div className="flex items-start justify-between gap-3">
+                    {/* Left: user avatar + name */}
+                    <Link
+                      to={`/u/${handleUrlSlug}`}
+                      className="flex items-center gap-2 sm:gap-3"
+                    >
+                      <div className="w-8 h-8 rounded-full overflow-hidden bg-slate-700 flex items-center justify-center text-xs font-semibold text-slate-100 border border-slate-600">
+                        {prof?.avatar_url ? (
+                          <img
+                            src={prof.avatar_url}
+                            alt={prof.username ?? "User"}
+                            className="w-full h-full object-cover"
+                          />
+                        ) : (
+                          (prof?.username?.[0] ?? "U").toUpperCase()
+                        )}
+                      </div>
+                      <div className="flex flex-col">
+                        <span className="text-sm font-semibold text-slate-100">
+                          {prof?.username ?? `user_${b.user_id.slice(0, 6)}`}
+                        </span>
+                        <span className="text-[11px] text-slate-500">
+                          Bet placed {when}
+                        </span>
+                      </div>
+                    </Link>
 
-                {/* Right: pick details */}
-                <div className="text-right text-[11px] sm:text-xs text-slate-300">
-                  <div className="mb-0.5">
-                    Picked{" "}
-                      <span className="font-semibold text-yellow-300">
-                        {pickedTeam}
-                      </span>
+                    {/* Right: bet details – shown in units, not dollars */}
+                    <div className="text-right text-[11px] sm:text-xs text-slate-300">
+                      <div className="mb-0.5">
+                        <span className="font-semibold text-yellow-300">
+                          {b.event_name}
+                        </span>
+                      </div>
+                      <div className="text-slate-400">
+                        {b.selection} @{" "}
+                        {b.odds_american !== null
+                          ? fmtSigned(b.odds_american)
+                          : "—"}
+                      </div>
+                      <div className="mt-0.5 text-[10px] text-slate-500">
+                        Stake:{" "}
+                        {stakeUnits !== null
+                          ? `${stakeUnits.toFixed(2)}u`
+                          : "—u"}
+                      </div>
+                      <div className="mt-0.5 text-[10px]">
+                        {b.status === "pending" || resultUnits === null ? (
+                          <span className="text-slate-400">
+                            {statusLabel}
+                          </span>
+                        ) : (
+                          <span
+                            className={
+                              resultUnits > 0
+                                ? "text-emerald-400"
+                                : resultUnits < 0
+                                ? "text-rose-400"
+                                : "text-slate-300"
+                            }
+                          >
+                            {`${resultUnits >= 0 ? "+" : ""}${resultUnits.toFixed(
+                              2
+                            )}u`}
+                          </span>
+                        )}
+                      </div>
+                    </div>
                   </div>
-                  <div className="text-slate-400">{lineLabel}</div>
-                  <div className="text-slate-500 mt-1 text-[10px]">
-                    NFL • Week {p.week} • {away} @ {home}
+                </li>
+              );
+            })}
+          </ul>
+        </section>
+      )}
+
+      {/* Game-level splits section */}
+      <section>
+        <h2 className="text-[11px] uppercase tracking-wide text-slate-400 mb-2">
+          Game Split — {windowLabel}
+        </h2>
+        <ul className="space-y-3">
+          {games.map((g) => {
+            const when = new Date(g.commence_at).toLocaleString();
+
+            return (
+              <li
+                key={g.gameId}
+                className="rounded-2xl p-3 sm:p-4 bg-slate-950/80 border border-slate-800 shadow-sm shadow-black/30"
+              >
+                <div className="flex items-start justify-between gap-3">
+                  {/* Left: matchup + meta */}
+                  <div className="flex flex-col text-[11px] sm:text-xs text-slate-300">
+                    <div className="text-sm sm:text-base font-semibold text-slate-100">
+                      {g.away} @ {g.home}
+                    </div>
+                    <div className="text-slate-500 mt-0.5">
+                      NFL • Week {g.week} • Kicked off {when}
+                    </div>
+                    <div className="text-slate-500 text-[10px] mt-0.5">
+                      {g.total} picks logged
+                    </div>
+                  </div>
+
+                  {/* Right: side percentages + your follows */}
+                  <div className="text-right text-[11px] sm:text-xs text-slate-300 w-40">
+                    {/* Home side */}
+                    <div className="mb-2">
+                      <div className="flex justify-between mb-0.5">
+                        <span className="text-slate-400">{g.home}</span>
+                        <span className="font-mono">
+                          {g.homePct.toFixed(0)}%
+                        </span>
+                      </div>
+                      <div className="h-1.5 rounded-full bg-slate-800 overflow-hidden">
+                        <div
+                          className="h-full bg-yellow-400"
+                          style={{ width: `${g.homePct}%` }}
+                        />
+                      </div>
+                      {g.followersHome.length > 0 && (
+                        <div className="mt-0.5 text-[10px] text-slate-400">
+                          Your follows on home:{" "}
+                          <span className="text-slate-100">
+                            {g.followersHome
+                              .slice(0, 3)
+                              .map((p) => p.username ?? p.id.slice(0, 6))
+                              .join(", ")}
+                            {g.followersHome.length > 3 &&
+                              ` +${g.followersHome.length - 3} more`}
+                          </span>
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Away side */}
+                    <div>
+                      <div className="flex justify-between mb-0.5">
+                        <span className="text-slate-400">{g.away}</span>
+                        <span className="font-mono">
+                          {g.awayPct.toFixed(0)}%
+                        </span>
+                      </div>
+                      <div className="h-1.5 rounded-full bg-slate-800 overflow-hidden">
+                        <div
+                          className="h-full bg-yellow-400"
+                          style={{ width: `${g.awayPct}%` }}
+                        />
+                      </div>
+                      {g.followersAway.length > 0 && (
+                        <div className="mt-0.5 text-[10px] text-slate-400">
+                          Your follows on away:{" "}
+                          <span className="text-slate-100">
+                            {g.followersAway
+                              .slice(0, 3)
+                              .map((p) => p.username ?? p.id.slice(0, 6))
+                              .join(", ")}
+                            {g.followersAway.length > 3 &&
+                              ` +${g.followersAway.length - 3} more`}
+                          </span>
+                        </div>
+                      )}
+                    </div>
                   </div>
                 </div>
-              </div>
-            </li>
-          );
-        })}
-      </ul>
+              </li>
+            );
+          })}
+        </ul>
+      </section>
     </div>
   );
 }
