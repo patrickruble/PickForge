@@ -2,7 +2,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useParams, useNavigate, Link } from "react-router-dom";
 import { supabase } from "../lib/supabase";
-import { useAllUserStats } from "../hooks/useAllUserStats";
+import { useAllUserStats, type UserBadge } from "../hooks/useAllUserStats";
 import { useProfileBets } from "../hooks/useProfileBets";
 
 type ProfileInfo = {
@@ -236,6 +236,7 @@ export default function UserProfile() {
 
   const statsUserId = profile?.id ?? null;
   const stats = statsUserId ? statsByUser[statsUserId] : undefined;
+  const badgeList: UserBadge[] = stats?.badges ?? [];
 
   const displayName =
     profile?.username && profile.username.trim().length > 0
@@ -400,34 +401,6 @@ export default function UserProfile() {
     };
   }, [statsUserId, statsByUser]);
 
-  // Simple badge system
-  const badges: string[] = useMemo(() => {
-    if (!stats) return ["Rookie Season"];
-
-    const list: string[] = [];
-
-    if (stats.totalPicks >= 75) {
-      list.push("Volume Player");
-    } else if (stats.totalPicks >= 25) {
-      list.push("Getting Reps");
-    }
-
-    if (stats.totalPicks >= 30 && stats.winRate >= 55) {
-      list.push("Sharp Shooter");
-    }
-
-    if (stats.currentStreakType === "W" && stats.currentStreakLen >= 3) {
-      list.push("On a Heater");
-    } else if (stats.currentStreakType === "L" && stats.currentStreakLen >= 3) {
-      list.push("Ice Cold");
-    }
-
-    if (!list.length) {
-      list.push("Rookie Season");
-    }
-
-    return list;
-  }, [stats]);
 
   const isOwnProfile =
     currentUserId != null &&
@@ -834,19 +807,49 @@ export default function UserProfile() {
             <p className="text-[11px] uppercase tracking-wide text-slate-400 mb-1">
               Badges
             </p>
-            <div className="flex flex-wrap gap-1.5">
-              {badges.map((b) => (
-                <span
-                  key={b}
-                  className="px-2 py-0.5 rounded-full border border-slate-700 text-[11px] text-slate-200 bg-slate-800/80"
-                >
-                  {b}
-                </span>
-              ))}
-            </div>
+            {badgeList.length > 0 ? (
+              <div className="flex flex-wrap gap-1.5">
+                {badgeList.map((badge) => (
+                  <span
+                    key={badge.slug}
+                    className="px-2 py-0.5 rounded-full border border-yellow-400/60 bg-yellow-400/10 text-[11px] text-yellow-200"
+                    title={badge.description}
+                  >
+                    {badge.label}
+                  </span>
+                ))}
+              </div>
+            ) : (
+              <p className="text-[11px] text-slate-500">
+                No badges earned yet. Stack some graded picks and streaks to unlock milestones.
+              </p>
+            )}
           </div>
 
           <div className="mt-4 border-t border-slate-800 pt-3">
+            {stats && (
+              <div className="mb-3 text-[11px] text-slate-400 space-y-1">
+                <p>
+                  Best win streak:{" "}
+                  <span className="text-slate-100">
+                    {stats.bestWinStreak ?? 0}
+                  </span>
+                </p>
+                <p>
+                  Worst loss streak:{" "}
+                  <span className="text-slate-100">
+                    {stats.worstLossStreak ?? 0}
+                  </span>
+                </p>
+                <p>
+                  Perfect weeks:{" "}
+                  <span className="text-slate-100">
+                    {stats.perfectWeeks ?? 0}
+                  </span>
+                </p>
+              </div>
+            )}
+
             <p className="text-[11px] uppercase tracking-wide text-slate-400 mb-1">
               Moneyline Mastery
             </p>

@@ -28,6 +28,12 @@ type GameRow = {
 
 type Grade = "pending" | "win" | "loss" | "push";
 
+export type UserBadge = {
+  slug: string;
+  label: string;
+  description: string;
+};
+
 export type UserSeasonStats = {
   userId: string;
   totalPicks: number;
@@ -43,6 +49,11 @@ export type UserSeasonStats = {
   mlWins: number;
   mlLosses: number;
   mlPushes: number;
+  // Extended streak + achievement metadata
+  bestWinStreak: number;
+  worstLossStreak: number;
+  perfectWeeks: number;
+  badges: UserBadge[];
 };
 
 type StatsByUser = Record<string, UserSeasonStats>;
@@ -154,6 +165,7 @@ export function useAllUserStats(): {
 
         // 4) Aggregate by user in chronological order
         const perUserResults = new Map<string, ("W" | "L" | "P")[]>();
+        const perUserTimeline = new Map<string, { result: Grade; week: number }[]>();
         const byUser: StatsByUser = {};
 
         for (const p of picks) {
@@ -162,6 +174,11 @@ export function useAllUserStats(): {
 
           // only FINAL games reach here as win/loss/push
           if (grade === "pending") continue;
+
+          if (!perUserTimeline.has(p.user_id)) {
+            perUserTimeline.set(p.user_id, []);
+          }
+          perUserTimeline.get(p.user_id)!.push({ result: grade, week: p.week });
 
           if (!byUser[p.user_id]) {
             byUser[p.user_id] = {
@@ -177,6 +194,10 @@ export function useAllUserStats(): {
               mlWins: 0,
               mlLosses: 0,
               mlPushes: 0,
+              bestWinStreak: 0,
+              worstLossStreak: 0,
+              perfectWeeks: 0,
+              badges: [],
             };
           }
 
@@ -248,6 +269,112 @@ export function useAllUserStats(): {
             byUser[userId].currentStreakType = type;
             byUser[userId].currentStreakLen = len;
           }
+        }
+
+        // 6) Compute extended streaks and badges per user
+        for (const [userId, resArr] of perUserResults.entries()) {
+          const stats = byUser[userId];
+          if (!stats) continue;
+
+          // Best win streak / worst loss streak from full result history
+          let bestWinStreak = 0;
+          let worstLossStreak = 0;
+          let runW = 0;
+          let runL = 0;
+
+          for (const r of resArr) {
+            if (r === "W") {
+              runW += 1;
+              runL = 0;
+              if (runW > bestWinStreak) bestWinStreak = runW;
+            } else if (r === "L") {
+              runL += 1;
+              runW = 0;
+              if (runL > worstLossStreak) worstLossStreak = runL;
+            } else {
+              // pushes/void reset the rolling streak
+              runW = 0;
+              runL = 0;
+            }
+          }
+
+          // Perfect weeks (at least one win, zero losses in that week)
+          const timeline = perUserTimeline.get(userId) ?? [];
+          const weekMap = new Map<number, { wins: number; losses: number }>();
+
+          for (const entry of timeline) {
+            const w = entry.week;
+            if (!weekMap.has(w)) {
+              weekMap.set(w, { wins: 0, losses: 0 });
+            }
+            const rec = weekMap.get(w)!;
+            if (entry.result === "win") rec.wins += 1;
+            else if (entry.result === "loss") rec.losses += 1;
+          }
+
+          let perfectWeeks = 0;
+          for (const rec of weekMap.values()) {
+            if (rec.wins > 0 && rec.losses === 0) {
+              perfectWeeks += 1;
+            }
+          }
+
+          // Derive badges from current streak + perfect weeks
+          const badges: UserBadge[] = [];
+          const hotStreak =
+            stats.currentStreakType === "W" ? stats.currentStreakLen : 0;
+          const coldStreak =
+            stats.currentStreakType === "L" ? stats.currentStreakLen : 0;
+
+          if (hotStreak >= 3) {
+            badges.push({
+              slug: "streak_3_hot",
+              label: "On a Heater (3+)",
+              description: "Hit 3 or more graded picks in a row.",
+            });
+          }
+          if (hotStreak >= 5) {
+            badges.push({
+              slug: "streak_5_hot",
+              label: "On Fire (5+)",
+              description: "Hit 5 or more graded picks in a row.",
+            });
+          }
+          if (hotStreak >= 10) {
+            badges.push({
+              slug: "streak_10_hot",
+              label: "Unconscious (10+)",
+              description: "Hit 10 or more graded picks in a row.",
+            });
+          }
+
+          if (coldStreak >= 3) {
+            badges.push({
+              slug: "cold_3",
+              label: "Ice Cold (3-L)",
+              description: "Dropped 3 graded picks in a row.",
+            });
+          }
+          if (coldStreak >= 5) {
+            badges.push({
+              slug: "cold_5",
+              label: "Frozen (5-L)",
+              description: "Dropped 5 graded picks in a row.",
+            });
+          }
+
+          if (perfectWeeks > 0) {
+            badges.push({
+              slug: "perfect_week",
+              label: "Perfect Week",
+              description: "Had at least one week with wins and no losses.",
+            });
+          }
+
+          stats.bestWinStreak = bestWinStreak;
+          stats.worstLossStreak = worstLossStreak;
+          stats.perfectWeeks = perfectWeeks;
+          stats.badges = badges;
         }
 
         if (cancelled) return;
