@@ -1,6 +1,6 @@
 // src/pages/Leaderboard.tsx
 import { useEffect, useMemo, useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 import { supabase } from "../lib/supabase";
 import { useAllUserStats } from "../hooks/useAllUserStats";
 import {
@@ -84,8 +84,30 @@ function gradePick(row: PickWithGame): Grade {
 }
 
 export default function Leaderboard() {
+  const [searchParams] = useSearchParams();
+  const isShareMode = searchParams.get("share") === "1";
+
   const currentWeek = useMemo(() => getNflWeekNumber(new Date()), []);
-  const [selectedWeek, setSelectedWeek] = useState(currentWeek);
+
+  const [selectedWeek, setSelectedWeek] = useState(() => {
+    const fromUrl = searchParams.get("week");
+    const parsed = fromUrl ? parseInt(fromUrl, 10) : NaN;
+    if (!Number.isNaN(parsed) && parsed >= MIN_WEEK && parsed <= MAX_WEEK) {
+      return parsed;
+    }
+    return currentWeek;
+  });
+
+  const initialViewParam = searchParams.get("view");
+  const initialMetricParam = searchParams.get("metric");
+
+  const [viewMode, setViewMode] = useState<"week" | "season">(
+    initialViewParam === "season" ? "season" : "week"
+  );
+
+  const [metricMode, setMetricMode] = useState<"standard" | "mm">(
+    initialMetricParam === "mm" ? "mm" : "standard"
+  );
 
   const isCurrentWeek = selectedWeek === currentWeek;
 
@@ -103,11 +125,6 @@ export default function Leaderboard() {
     {}
   );
 
-  // Week vs season view
-  const [viewMode, setViewMode] = useState<"week" | "season">("week");
-
-  // Metric mode: standard (win%) vs Moneyline Mastery
-  const [metricMode, setMetricMode] = useState<"standard" | "mm">("standard");
 
   // Search term for players
   const [searchTerm, setSearchTerm] = useState("");
@@ -559,6 +576,31 @@ export default function Leaderboard() {
 
   const isWeekView = viewMode === "week";
 
+  const handleCopyShareLink = () => {
+    if (typeof window === "undefined") return;
+
+    try {
+      const url = new URL(window.location.href);
+      url.searchParams.set("week", String(selectedWeek));
+      url.searchParams.set("view", viewMode);
+      url.searchParams.set("metric", metricMode);
+      url.searchParams.set("share", "1");
+
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(url.toString());
+      } else {
+        const textArea = document.createElement("textarea");
+        textArea.value = url.toString();
+        document.body.appendChild(textArea);
+        textArea.select();
+        document.execCommand("copy");
+        document.body.removeChild(textArea);
+      }
+    } catch (err) {
+      console.error("[Leaderboard] failed to copy share link", err);
+    }
+  };
+
   // Loading state for week view
   if (isWeekView && loading && !rows.length) {
     return (
@@ -721,16 +763,34 @@ export default function Leaderboard() {
             </button>
           </div>
 
-          {/* Search input */}
-          <div className="w-full sm:w-44 md:w-56">
-            <input
-              type="text"
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              placeholder="Search players"
-              className="w-full rounded-full bg-slate-900/80 border border-slate-700/80 px-3 py-1 text-[11px] sm:text-xs text-slate-100 placeholder-slate-500 focus:outline-none focus:ring-1 focus:ring-yellow-400"
-            />
-          </div>
+          {/* Share / Search controls */}
+          {!isShareMode && (
+            <button
+              type="button"
+              onClick={handleCopyShareLink}
+              className="px-2.5 py-1 rounded-full bg-slate-900/80 border border-slate-700/80 text-[11px] sm:text-xs text-slate-300 hover:text-slate-100"
+            >
+              Share leaderboard
+            </button>
+          )}
+          {isShareMode && (
+            <div className="px-2.5 py-1 rounded-full bg-emerald-900/40 border border-emerald-500/60 text-[11px] sm:text-xs text-emerald-200">
+              Share view
+            </div>
+          )}
+
+          {/* Search input (hidden in share mode for a cleaner card) */}
+          {!isShareMode && (
+            <div className="w-full sm:w-44 md:w-56">
+              <input
+                type="text"
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                placeholder="Search players"
+                className="w-full rounded-full bg-slate-900/80 border border-slate-700/80 px-3 py-1 text-[11px] sm:text-xs text-slate-100 placeholder-slate-500 focus:outline-none focus:ring-1 focus:ring-yellow-400"
+              />
+            </div>
+          )}
         </div>
       </header>
 
