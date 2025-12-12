@@ -30,9 +30,7 @@ export default function App() {
         <main className="mx-auto max-w-6xl px-4 py-12">
           <Suspense
             fallback={
-              <div className="text-sm text-slate-400">
-                Loading PickForge…
-              </div>
+              <div className="text-sm text-slate-400">Loading PickForge…</div>
             }
           >
             <Routes>
