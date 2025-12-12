@@ -217,11 +217,22 @@ export default function Leaderboard() {
     };
   }, [selectedWeek]);
 
-  // Weekly aggregated leaderboard (graded picks only)
+  // Weekly aggregated leaderboard (graded picks only) — respects metric toggle
   const weekAggregated: LeaderItem[] = useMemo(() => {
     const stats = new Map<string, LeaderItem>();
 
+    const isMM = metricMode === "mm";
+
     for (const r of rows) {
+      // Only count picks that match the current metric mode
+      if (isMM) {
+        if (r.contest_type !== "mm") continue;
+        if (r.picked_price_type !== "ml") continue;
+      } else {
+        if (r.contest_type !== "pickem") continue;
+        if (r.picked_price_type !== "spread") continue;
+      }
+
       const g = gradePick(r);
       if (g === "pending") continue;
 
@@ -261,7 +272,7 @@ export default function Leaderboard() {
     });
 
     return list.slice(0, 100);
-  }, [rows, profilesMap]);
+  }, [rows, profilesMap, metricMode]);
 
   // Season aggregated leaderboard from useAllUserStats
   const seasonAggregated: LeaderItem[] = useMemo(() => {

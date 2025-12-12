@@ -3,7 +3,34 @@ import { useEffect, useMemo, useState } from "react";
 import { Link, NavLink, useNavigate } from "react-router-dom";
 import { supabase } from "../lib/supabase";
 
+function logSupabaseError(prefix: string, error: any) {
+  if (!error) return;
+  console.error(prefix, error);
+  console.error(`${prefix} details:`, {
+    message: error?.message,
+    details: error?.details,
+    hint: error?.hint,
+    code: error?.code,
+    status: error?.status,
+  });
+}
+
+async function ensureProfileRow(userId: string) {
+  // Create a minimal profile row if one doesn't exist.
+  // Safe even if the trigger already did it.
+  const { error } = await supabase.from("profiles").insert({ id: userId });
+  if (error) {
+    // ignore duplicate key; anything else is useful to see
+    const msg = String(error?.message ?? "").toLowerCase();
+    const code = String(error?.code ?? "").toLowerCase();
+    if (!msg.includes("duplicate") && !code.includes("23505")) {
+      logSupabaseError("[Header] profile insert error:", error);
+    }
+  }
+}
+
 type ProfileRow = {
+  id?: string;
   username: string | null;
   avatar_url: string | null;
 };
@@ -25,13 +52,14 @@ export default function Header() {
       } = await supabase.auth.getSession();
 
       if (error) {
-        console.error("[Header] getSession error:", error);
+        logSupabaseError("[Header] getSession error:", error);
       }
       if (!mounted) return;
 
       const u = session?.user ?? null;
       setUserId(u?.id ?? null);
       setEmail(u?.email ?? null);
+      console.log("[Header] user:", u?.id ?? null, u?.email ?? null);
 
       if (!u?.id) {
         setUsername(null);
@@ -39,7 +67,7 @@ export default function Header() {
         return;
       }
 
-      const { data, error: profileError } = await supabase
+      let { data, error: profileError } = await supabase
         .from("profiles")
         .select("username, avatar_url")
         .eq("id", u.id)
@@ -48,7 +76,21 @@ export default function Header() {
       if (!mounted) return;
 
       if (profileError) {
-        console.error("[Header] profile load error:", profileError);
+        logSupabaseError("[Header] profile load error:", profileError);
+      }
+
+      // If the profile row doesn't exist yet, create it and try once more.
+      if (!profileError && !data) {
+        await ensureProfileRow(u.id);
+        const retry = await supabase
+          .from("profiles")
+          .select("username, avatar_url")
+          .eq("id", u.id)
+          .maybeSingle();
+        data = retry.data;
+        if (retry.error) {
+          logSupabaseError("[Header] profile load error (retry):", retry.error);
+        }
       }
 
       const row = data as ProfileRow | null;
@@ -72,15 +114,36 @@ export default function Header() {
       setUserId(u.id);
       setEmail(u.email ?? null);
 
+      console.log("[Header] auth change user:", u.id, u.email ?? null);
+
       supabase
         .from("profiles")
         .select("username, avatar_url")
         .eq("id", u.id)
         .maybeSingle()
-        .then(({ data, error }) => {
+        .then(async ({ data, error }) => {
           if (error) {
-            console.error("[Header] profile load error (sub):", error);
+            logSupabaseError("[Header] profile load error (sub):", error);
+            return;
           }
+
+          // Create missing row, then refetch.
+          if (!data) {
+            await ensureProfileRow(u.id);
+            const retry = await supabase
+              .from("profiles")
+              .select("username, avatar_url")
+              .eq("id", u.id)
+              .maybeSingle();
+            if (retry.error) {
+              logSupabaseError("[Header] profile load error (sub retry):", retry.error);
+            }
+            const row = retry.data as ProfileRow | null;
+            setUsername(row?.username ?? null);
+            setAvatarUrl(row?.avatar_url ?? null);
+            return;
+          }
+
           const row = data as ProfileRow | null;
           setUsername(row?.username ?? null);
           setAvatarUrl(row?.avatar_url ?? null);
@@ -89,7 +152,7 @@ export default function Header() {
 
     return () => {
       mounted = false;
-      sub.subscription.unsubscribe();
+      sub?.subscription?.unsubscribe();
     };
   }, []);
 
@@ -224,7 +287,7 @@ export default function Header() {
             Leaderboard
           </NavLink>
 
-          {displayName && (
+          {userId && (
             <>
               <NavLink
                 to="/stats"
