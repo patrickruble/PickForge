@@ -25,6 +25,18 @@ function tallyToString(t: WLTTally): string {
   return t.t > 0 ? `${t.w}-${t.l}-${t.t}` : `${t.w}-${t.l}`;
 }
 
+function formatSigned(n: number, digits: number = 1): string {
+  const v = Number.isFinite(n) ? n : 0;
+  const s = v >= 0 ? "+" : "";
+  return `${s}${v.toFixed(digits)}`;
+}
+
+type LuckStats = {
+  actual: WLTTally;
+  xw: number;
+  luck: number;
+};
+
 export default function SleeperLeague() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -46,6 +58,8 @@ export default function SleeperLeague() {
   const [medianRecordByRoster, setMedianRecordByRoster] = useState<
     Record<number, WLTTally>
   >({});
+
+  const [luckByRoster, setLuckByRoster] = useState<Record<number, LuckStats>>({});
 
   useEffect(() => {
     const load = async () => {
@@ -128,6 +142,8 @@ export default function SleeperLeague() {
         );
 
         const acc: Record<number, WLTTally> = {};
+        const actualAcc: Record<number, WLTTally> = {};
+        const xwAcc: Record<number, number> = {};
 
         weekDatas.forEach((weekMatchups) => {
           const pts = weekMatchups
@@ -135,6 +151,51 @@ export default function SleeperLeague() {
             .filter((p) => Number.isFinite(p));
 
           const med = median(pts);
+          // Expected wins (xW): outscored/(teams-1) using weekly points rank
+          const nTeams = weekMatchups.length;
+          const rows = weekMatchups.map((m) => ({
+            rid: m.roster_id,
+            pts: typeof m.points === "number" ? m.points : 0,
+            matchupId: m.matchup_id,
+          }));
+
+          if (nTeams > 1) {
+            for (let i = 0; i < rows.length; i++) {
+              const r = rows[i];
+              const outscored = rows.filter((x) => r.pts > x.pts).length;
+              xwAcc[r.rid] = (xwAcc[r.rid] ?? 0) + outscored / (nTeams - 1);
+            }
+          }
+
+          // Actual matchup W/L/T by matchup_id
+          const byMatchup = new Map<number, Array<{ rid: number; pts: number }>>();
+          rows.forEach((r) => {
+            const mid = r.matchupId;
+            if (typeof mid !== "number") return;
+            const arr = byMatchup.get(mid) ?? [];
+            arr.push({ rid: r.rid, pts: r.pts });
+            byMatchup.set(mid, arr);
+          });
+
+          byMatchup.forEach((pair) => {
+            if (pair.length < 2) return;
+            const a = pair[0];
+            const b = pair[1];
+            if (!actualAcc[a.rid]) actualAcc[a.rid] = { w: 0, l: 0, t: 0 };
+            if (!actualAcc[b.rid]) actualAcc[b.rid] = { w: 0, l: 0, t: 0 };
+
+            if (a.pts > b.pts) {
+              actualAcc[a.rid].w += 1;
+              actualAcc[b.rid].l += 1;
+            } else if (a.pts < b.pts) {
+              actualAcc[a.rid].l += 1;
+              actualAcc[b.rid].w += 1;
+            } else {
+              actualAcc[a.rid].t += 1;
+              actualAcc[b.rid].t += 1;
+            }
+          });
+
           if (med === null) return;
 
           weekMatchups.forEach((m) => {
@@ -148,10 +209,25 @@ export default function SleeperLeague() {
           });
         });
 
+        const luck: Record<number, LuckStats> = {};
+        const rosterIds = new Set<number>([
+          ...Object.keys(actualAcc).map((k) => Number(k)),
+          ...Object.keys(xwAcc).map((k) => Number(k)),
+        ]);
+
+        rosterIds.forEach((rid) => {
+          const actual = actualAcc[rid] ?? { w: 0, l: 0, t: 0 };
+          const xw = xwAcc[rid] ?? 0;
+          const actualWins = actual.w + 0.5 * actual.t;
+          luck[rid] = { actual, xw, luck: actualWins - xw };
+        });
+
         setMedianRecordByRoster(acc);
+        setLuckByRoster(luck);
       } catch (e: any) {
         setMedianRecError(e?.message ?? "Failed to compute median records.");
         setMedianRecordByRoster({});
+        setLuckByRoster({});
       } finally {
         setMedianRecLoading(false);
       }
@@ -316,6 +392,20 @@ export default function SleeperLeague() {
                             : "At median"}
                         </span>
                       )}
+                      {luckByRoster[a.roster_id] && (
+                        <span
+                          className={
+                            luckByRoster[a.roster_id].luck > 0.5
+                              ? "rounded bg-green-600/15 px-2 py-1 text-xs text-green-200"
+                              : luckByRoster[a.roster_id].luck < -0.5
+                              ? "rounded bg-red-600/15 px-2 py-1 text-xs text-red-200"
+                              : "rounded bg-slate-500/15 px-2 py-1 text-xs text-slate-200"
+                          }
+                          title={`Expected wins through week ${week}: ${luckByRoster[a.roster_id].xw.toFixed(1)}`}
+                        >
+                          Luck {formatSigned(luckByRoster[a.roster_id].luck)}
+                        </span>
+                      )}
                     </div>
                     <div className="text-xs opacity-70">
                       Awaiting opponent
@@ -362,6 +452,20 @@ export default function SleeperLeague() {
                               : "At median"}
                           </span>
                         )}
+                        {luckByRoster[a.roster_id] && (
+                          <span
+                            className={
+                              luckByRoster[a.roster_id].luck > 0.5
+                                ? "rounded bg-green-600/15 px-2 py-0.5 text-xs text-green-200"
+                                : luckByRoster[a.roster_id].luck < -0.5
+                                ? "rounded bg-red-600/15 px-2 py-0.5 text-xs text-red-200"
+                                : "rounded bg-slate-500/15 px-2 py-0.5 text-xs text-slate-200"
+                            }
+                            title={`Expected wins through week ${week}: ${luckByRoster[a.roster_id].xw.toFixed(1)}`}
+                          >
+                            Luck {formatSigned(luckByRoster[a.roster_id].luck)}
+                          </span>
+                        )}
                       </div>
                     </div>
 
@@ -387,6 +491,20 @@ export default function SleeperLeague() {
                               : bPts < weekMedian
                               ? "Below median"
                               : "At median"}
+                          </span>
+                        )}
+                        {luckByRoster[b.roster_id] && (
+                          <span
+                            className={
+                              luckByRoster[b.roster_id].luck > 0.5
+                                ? "rounded bg-green-600/15 px-2 py-0.5 text-xs text-green-200"
+                                : luckByRoster[b.roster_id].luck < -0.5
+                                ? "rounded bg-red-600/15 px-2 py-0.5 text-xs text-red-200"
+                                : "rounded bg-slate-500/15 px-2 py-0.5 text-xs text-slate-200"
+                            }
+                            title={`Expected wins through week ${week}: ${luckByRoster[b.roster_id].xw.toFixed(1)}`}
+                          >
+                            Luck {formatSigned(luckByRoster[b.roster_id].luck)}
                           </span>
                         )}
                         <span className="text-xs opacity-70">
