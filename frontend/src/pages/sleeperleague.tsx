@@ -44,6 +44,7 @@ type PowerRow = {
   xw: number;
   luck: number;
   median: WLTTally;
+  combined: WLTTally;
   pf: number;
   sos: number | null;
 };
@@ -73,7 +74,7 @@ export default function SleeperLeague() {
   const [luckByRoster, setLuckByRoster] = useState<Record<number, LuckStats>>({});
   const [powerRows, setPowerRows] = useState<PowerRow[]>([]);
   const [powerSortKey, setPowerSortKey] = useState<
-    "xw" | "luck" | "pf" | "sos" | "actual" | "median"
+    "xw" | "luck" | "pf" | "sos" | "actual" | "median" | "combined"
   >("xw");
   const [powerSortDir, setPowerSortDir] = useState<"asc" | "desc">("desc");
 
@@ -290,8 +291,15 @@ export default function SleeperLeague() {
           const actualWins = actual.w + 0.5 * actual.t;
           const luckVal = actualWins - xw;
           const medRec = acc[rid] ?? { w: 0, l: 0, t: 0 };
+          const combined: WLTTally = {
+            w: actual.w + medRec.w,
+            l: actual.l + medRec.l,
+            t: actual.t + medRec.t,
+          };
           const pf = pfAcc[rid] ?? 0;
-          const sos = sosCntAcc[rid] ? (sosSumAcc[rid] ?? 0) / sosCntAcc[rid] : null;
+          const sos = sosCntAcc[rid]
+            ? (sosSumAcc[rid] ?? 0) / sosCntAcc[rid]
+            : null;
 
           return {
             roster_id: rid,
@@ -300,6 +308,7 @@ export default function SleeperLeague() {
             xw,
             luck: luckVal,
             median: medRec,
+            combined,
             pf,
             sos,
           };
@@ -382,6 +391,8 @@ export default function SleeperLeague() {
           return wltWins(r.actual);
         case "median":
           return wltWins(r.median);
+        case "combined":
+          return wltWins(r.combined);
         default:
           return r.xw;
       }
@@ -402,7 +413,7 @@ export default function SleeperLeague() {
   }, [powerRows, powerSortKey, powerSortDir]);
 
   const onSort = (
-    key: "xw" | "luck" | "pf" | "sos" | "actual" | "median"
+    key: "xw" | "luck" | "pf" | "sos" | "actual" | "median" | "combined"
   ) => {
     if (powerSortKey === key) {
       setPowerSortDir((d) => (d === "asc" ? "desc" : "asc"));
@@ -413,7 +424,7 @@ export default function SleeperLeague() {
   };
 
   const sortIndicator = (
-    key: "xw" | "luck" | "pf" | "sos" | "actual" | "median"
+    key: "xw" | "luck" | "pf" | "sos" | "actual" | "median" | "combined"
   ) => {
     if (powerSortKey !== key) return "";
     return powerSortDir === "asc" ? " ▲" : " ▼";
@@ -731,6 +742,16 @@ export default function SleeperLeague() {
                   <th className="py-2 pr-2">
                     <button
                       type="button"
+                      onClick={() => onSort("combined")}
+                      className="hover:underline"
+                      title="Sort by combined record (matchup + median)"
+                    >
+                      Combined{sortIndicator("combined")}
+                    </button>
+                  </th>
+                  <th className="py-2 pr-2">
+                    <button
+                      type="button"
                       onClick={() => onSort("pf")}
                       className="hover:underline"
                       title="Sort by points for"
@@ -772,6 +793,7 @@ export default function SleeperLeague() {
                       </span>
                     </td>
                     <td className="py-2 pr-2 tabular-nums">{tallyToString(r.median)}</td>
+                    <td className="py-2 pr-2 tabular-nums">{tallyToString(r.combined)}</td>
                     <td className="py-2 pr-2 tabular-nums">{r.pf.toFixed(1)}</td>
                     <td className="py-2 tabular-nums">
                       {r.sos === null ? "—" : r.sos.toFixed(1)}
