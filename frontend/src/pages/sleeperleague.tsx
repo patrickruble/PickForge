@@ -11,6 +11,20 @@ import {
   type SleeperMatchup,
 } from "../api/sleeper";
 
+function median(values: number[]): number | null {
+  if (!values.length) return null;
+  const sorted = [...values].sort((a, b) => a - b);
+  const mid = Math.floor(sorted.length / 2);
+  if (sorted.length % 2 === 1) return sorted[mid];
+  return (sorted[mid - 1] + sorted[mid]) / 2;
+}
+
+type WLTTally = { w: number; l: number; t: number };
+
+function tallyToString(t: WLTTally): string {
+  return t.t > 0 ? `${t.w}-${t.l}-${t.t}` : `${t.w}-${t.l}`;
+}
+
 export default function SleeperLeague() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -26,6 +40,12 @@ export default function SleeperLeague() {
   const [matchupsLoading, setMatchupsLoading] = useState<boolean>(false);
   const [matchupsError, setMatchupsError] = useState<string | null>(null);
   const [matchups, setMatchups] = useState<SleeperMatchup[]>([]);
+
+  const [medianRecLoading, setMedianRecLoading] = useState<boolean>(false);
+  const [medianRecError, setMedianRecError] = useState<string | null>(null);
+  const [medianRecordByRoster, setMedianRecordByRoster] = useState<
+    Record<number, WLTTally>
+  >({});
 
   useEffect(() => {
     const load = async () => {
@@ -94,6 +114,52 @@ export default function SleeperLeague() {
     loadMatchups();
   }, [leagueId, week]);
 
+  useEffect(() => {
+    const loadMedianRecords = async () => {
+      if (!leagueId) return;
+
+      try {
+        setMedianRecLoading(true);
+        setMedianRecError(null);
+
+        const weeksToFetch = Array.from({ length: week }, (_, i) => i + 1);
+        const weekDatas = await Promise.all(
+          weeksToFetch.map((w) => getSleeperMatchups(leagueId, w))
+        );
+
+        const acc: Record<number, WLTTally> = {};
+
+        weekDatas.forEach((weekMatchups) => {
+          const pts = weekMatchups
+            .map((m) => (typeof m.points === "number" ? m.points : 0))
+            .filter((p) => Number.isFinite(p));
+
+          const med = median(pts);
+          if (med === null) return;
+
+          weekMatchups.forEach((m) => {
+            const rid = m.roster_id;
+            const p = typeof m.points === "number" ? m.points : 0;
+            if (!acc[rid]) acc[rid] = { w: 0, l: 0, t: 0 };
+
+            if (p > med) acc[rid].w += 1;
+            else if (p < med) acc[rid].l += 1;
+            else acc[rid].t += 1;
+          });
+        });
+
+        setMedianRecordByRoster(acc);
+      } catch (e: any) {
+        setMedianRecError(e?.message ?? "Failed to compute median records.");
+        setMedianRecordByRoster({});
+      } finally {
+        setMedianRecLoading(false);
+      }
+    };
+
+    loadMedianRecords();
+  }, [leagueId, week]);
+
   const userById = useMemo(() => {
     const map = new Map<string, SleeperLeagueUser>();
     users.forEach((u) => map.set(u.user_id, u));
@@ -124,6 +190,14 @@ export default function SleeperLeague() {
       .sort((a, b) => a[0] - b[0])
       .map(([, group]) => group);
   }, [matchups]);
+
+  const weekPoints = useMemo(() => {
+    return matchups
+      .map((m) => (typeof m.points === "number" ? m.points : 0))
+      .filter((p) => Number.isFinite(p));
+  }, [matchups]);
+
+  const weekMedian = useMemo(() => median(weekPoints), [weekPoints]);
 
   if (loading) {
     return <div className="p-4">Loading Sleeper league…</div>;
@@ -175,6 +249,13 @@ export default function SleeperLeague() {
               }}
             />
           </div>
+          <div className="text-xs opacity-70">
+            {weekMedian === null ? (
+              <>Median: —</>
+            ) : (
+              <>Median: {weekMedian.toFixed(1)}</>
+            )}
+          </div>
         </div>
 
         {matchupsLoading && (
@@ -182,6 +263,13 @@ export default function SleeperLeague() {
         )}
         {matchupsError && (
           <div className="text-sm text-red-500">{matchupsError}</div>
+        )}
+
+        {medianRecLoading && (
+          <div className="text-sm opacity-80">Computing median records…</div>
+        )}
+        {medianRecError && (
+          <div className="text-sm text-red-500">{medianRecError}</div>
         )}
 
         {!matchupsLoading && !matchupsError && matchupPairs.length === 0 && (
@@ -206,10 +294,37 @@ export default function SleeperLeague() {
               if (!b) {
                 return (
                   <li key={`${week}-${idx}`} className="rounded-lg border p-3">
-                    <div className="font-medium">
-                      {aName} <span className="opacity-70">({aPts})</span>
+                    <div className="flex items-center justify-between gap-3">
+                      <div className="font-medium">
+                        {aName} <span className="opacity-70">({aPts})</span>
+                      </div>
+
+                      {weekMedian !== null && (
+                        <span
+                          className={
+                            aPts > weekMedian
+                              ? "rounded bg-green-600/20 px-2 py-1 text-xs text-green-300"
+                              : aPts < weekMedian
+                              ? "rounded bg-red-600/20 px-2 py-1 text-xs text-red-300"
+                              : "rounded bg-yellow-600/20 px-2 py-1 text-xs text-yellow-200"
+                          }
+                        >
+                          {aPts > weekMedian
+                            ? "Beat median"
+                            : aPts < weekMedian
+                            ? "Below median"
+                            : "At median"}
+                        </span>
+                      )}
                     </div>
-                    <div className="text-xs opacity-70">Awaiting opponent</div>
+                    <div className="text-xs opacity-70">
+                      Awaiting opponent
+                      {medianRecordByRoster[a.roster_id] && (
+                        <>
+                          {" "}• Median record: {tallyToString(medianRecordByRoster[a.roster_id])}
+                        </>
+                      )}
+                    </div>
                   </li>
                 );
               }
@@ -223,8 +338,30 @@ export default function SleeperLeague() {
                   <div className="flex items-center justify-between gap-3">
                     <div className="min-w-0">
                       <div className="truncate font-medium">{aName}</div>
-                      <div className="text-xs opacity-70">
-                        Roster {a.roster_id}
+                      <div className="mt-1 flex items-center gap-2">
+                        <span className="text-xs opacity-70">
+                          Roster {a.roster_id}
+                          {medianRecordByRoster[a.roster_id] && (
+                            <> • Median: {tallyToString(medianRecordByRoster[a.roster_id])}</>
+                          )}
+                        </span>
+                        {weekMedian !== null && (
+                          <span
+                            className={
+                              aPts > weekMedian
+                                ? "rounded bg-green-600/20 px-2 py-0.5 text-xs text-green-300"
+                                : aPts < weekMedian
+                                ? "rounded bg-red-600/20 px-2 py-0.5 text-xs text-red-300"
+                                : "rounded bg-yellow-600/20 px-2 py-0.5 text-xs text-yellow-200"
+                            }
+                          >
+                            {aPts > weekMedian
+                              ? "Beat median"
+                              : aPts < weekMedian
+                              ? "Below median"
+                              : "At median"}
+                          </span>
+                        )}
                       </div>
                     </div>
 
@@ -234,8 +371,30 @@ export default function SleeperLeague() {
 
                     <div className="min-w-0 text-right">
                       <div className="truncate font-medium">{bName}</div>
-                      <div className="text-xs opacity-70">
-                        Roster {b.roster_id}
+                      <div className="mt-1 flex items-center justify-end gap-2">
+                        {weekMedian !== null && (
+                          <span
+                            className={
+                              bPts > weekMedian
+                                ? "rounded bg-green-600/20 px-2 py-0.5 text-xs text-green-300"
+                                : bPts < weekMedian
+                                ? "rounded bg-red-600/20 px-2 py-0.5 text-xs text-red-300"
+                                : "rounded bg-yellow-600/20 px-2 py-0.5 text-xs text-yellow-200"
+                            }
+                          >
+                            {bPts > weekMedian
+                              ? "Beat median"
+                              : bPts < weekMedian
+                              ? "Below median"
+                              : "At median"}
+                          </span>
+                        )}
+                        <span className="text-xs opacity-70">
+                          Roster {b.roster_id}
+                          {medianRecordByRoster[b.roster_id] && (
+                            <> • Median: {tallyToString(medianRecordByRoster[b.roster_id])}</>
+                          )}
+                        </span>
                       </div>
                     </div>
                   </div>
