@@ -37,6 +37,17 @@ type LuckStats = {
   luck: number;
 };
 
+type PowerRow = {
+  roster_id: number;
+  name: string;
+  actual: WLTTally;
+  xw: number;
+  luck: number;
+  median: WLTTally;
+  pf: number;
+  sos: number | null;
+};
+
 export default function SleeperLeague() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -60,6 +71,7 @@ export default function SleeperLeague() {
   >({});
 
   const [luckByRoster, setLuckByRoster] = useState<Record<number, LuckStats>>({});
+  const [powerRows, setPowerRows] = useState<PowerRow[]>([]);
 
   useEffect(() => {
     const load = async () => {
@@ -128,6 +140,12 @@ export default function SleeperLeague() {
     loadMatchups();
   }, [leagueId, week]);
 
+  const userById = useMemo(() => {
+    const map = new Map<string, SleeperLeagueUser>();
+    users.forEach((u) => map.set(u.user_id, u));
+    return map;
+  }, [users]);
+
   useEffect(() => {
     const loadMedianRecords = async () => {
       if (!leagueId) return;
@@ -144,6 +162,9 @@ export default function SleeperLeague() {
         const acc: Record<number, WLTTally> = {};
         const actualAcc: Record<number, WLTTally> = {};
         const xwAcc: Record<number, number> = {};
+        const pfAcc: Record<number, number> = {};
+        const sosSumAcc: Record<number, number> = {};
+        const sosCntAcc: Record<number, number> = {};
 
         weekDatas.forEach((weekMatchups) => {
           const pts = weekMatchups
@@ -158,6 +179,31 @@ export default function SleeperLeague() {
             pts: typeof m.points === "number" ? m.points : 0,
             matchupId: m.matchup_id,
           }));
+
+          // PF accumulation
+          rows.forEach((r) => {
+            pfAcc[r.rid] = (pfAcc[r.rid] ?? 0) + r.pts;
+          });
+
+          // SoS accumulation: average opponent points faced (head-to-head only)
+          const byMatchup2 = new Map<number, Array<{ rid: number; pts: number }>>();
+          rows.forEach((r) => {
+            const mid = r.matchupId;
+            if (typeof mid !== "number") return;
+            const arr = byMatchup2.get(mid) ?? [];
+            arr.push({ rid: r.rid, pts: r.pts });
+            byMatchup2.set(mid, arr);
+          });
+
+          byMatchup2.forEach((pair) => {
+            if (pair.length < 2) return;
+            const a = pair[0];
+            const b = pair[1];
+            sosSumAcc[a.rid] = (sosSumAcc[a.rid] ?? 0) + b.pts;
+            sosCntAcc[a.rid] = (sosCntAcc[a.rid] ?? 0) + 1;
+            sosSumAcc[b.rid] = (sosSumAcc[b.rid] ?? 0) + a.pts;
+            sosCntAcc[b.rid] = (sosCntAcc[b.rid] ?? 0) + 1;
+          });
 
           if (nTeams > 1) {
             for (let i = 0; i < rows.length; i++) {
@@ -224,23 +270,52 @@ export default function SleeperLeague() {
 
         setMedianRecordByRoster(acc);
         setLuckByRoster(luck);
+
+        const rowsOut: PowerRow[] = rosters.map((r) => {
+          const rid = r.roster_id;
+          const owner = r.owner_id ? userById.get(r.owner_id) : null;
+          const name = owner?.display_name ?? `Roster ${rid}`;
+
+          const actual = actualAcc[rid] ?? { w: 0, l: 0, t: 0 };
+          const xw = xwAcc[rid] ?? 0;
+          const actualWins = actual.w + 0.5 * actual.t;
+          const luckVal = actualWins - xw;
+          const medRec = acc[rid] ?? { w: 0, l: 0, t: 0 };
+          const pf = pfAcc[rid] ?? 0;
+          const sos = sosCntAcc[rid] ? (sosSumAcc[rid] ?? 0) / sosCntAcc[rid] : null;
+
+          return {
+            roster_id: rid,
+            name,
+            actual,
+            xw,
+            luck: luckVal,
+            median: medRec,
+            pf,
+            sos,
+          };
+        });
+
+        // Sort by expected wins then PF as tie-breaker
+        rowsOut.sort((a, b) => {
+          if (b.xw !== a.xw) return b.xw - a.xw;
+          return b.pf - a.pf;
+        });
+
+        setPowerRows(rowsOut);
       } catch (e: any) {
         setMedianRecError(e?.message ?? "Failed to compute median records.");
         setMedianRecordByRoster({});
         setLuckByRoster({});
+        setPowerRows([]);
       } finally {
         setMedianRecLoading(false);
       }
     };
 
     loadMedianRecords();
-  }, [leagueId, week]);
+  }, [leagueId, week, rosters, userById]);
 
-  const userById = useMemo(() => {
-    const map = new Map<string, SleeperLeagueUser>();
-    users.forEach((u) => map.set(u.user_id, u));
-    return map;
-  }, [users]);
 
   const rosterNameById = useMemo(() => {
     const map = new Map<number, string>();
@@ -520,6 +595,69 @@ export default function SleeperLeague() {
               );
             })}
           </ul>
+        )}
+      </div>
+
+      <div className="mb-8 rounded-lg border p-4">
+        <div className="mb-3 flex items-end justify-between gap-3">
+          <div>
+            <h2 className="text-lg font-semibold">Power Rankings</h2>
+            <p className="text-xs opacity-70">
+              Sorted by expected wins (xW). Luck shows actual − xW. SoS is average opponent points faced.
+            </p>
+          </div>
+        </div>
+
+        {medianRecLoading ? (
+          <div className="text-sm opacity-80">Computing rankings…</div>
+        ) : powerRows.length === 0 ? (
+          <div className="text-sm opacity-80">No ranking data yet.</div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead className="text-left text-xs opacity-70">
+                <tr>
+                  <th className="py-2 pr-2">#</th>
+                  <th className="py-2 pr-2">Team</th>
+                  <th className="py-2 pr-2">Actual</th>
+                  <th className="py-2 pr-2">xW</th>
+                  <th className="py-2 pr-2">Luck</th>
+                  <th className="py-2 pr-2">Median</th>
+                  <th className="py-2 pr-2">PF</th>
+                  <th className="py-2">SoS</th>
+                </tr>
+              </thead>
+              <tbody>
+                {powerRows.map((r, i) => (
+                  <tr key={r.roster_id} className="border-t border-white/10">
+                    <td className="py-2 pr-2 tabular-nums opacity-80">{i + 1}</td>
+                    <td className="py-2 pr-2 font-medium">{r.name}</td>
+                    <td className="py-2 pr-2 tabular-nums">{tallyToString(r.actual)}</td>
+                    <td className="py-2 pr-2 tabular-nums">{r.xw.toFixed(1)}</td>
+                    <td className="py-2 pr-2 tabular-nums">
+                      <span
+                        className={
+                          r.luck > 0.5
+                            ? "rounded bg-green-600/15 px-2 py-0.5 text-xs text-green-200"
+                            : r.luck < -0.5
+                            ? "rounded bg-red-600/15 px-2 py-0.5 text-xs text-red-200"
+                            : "rounded bg-slate-500/15 px-2 py-0.5 text-xs text-slate-200"
+                        }
+                        title="Luck = (actual wins + 0.5 ties) − expected wins"
+                      >
+                        {formatSigned(r.luck)}
+                      </span>
+                    </td>
+                    <td className="py-2 pr-2 tabular-nums">{tallyToString(r.median)}</td>
+                    <td className="py-2 pr-2 tabular-nums">{r.pf.toFixed(1)}</td>
+                    <td className="py-2 tabular-nums">
+                      {r.sos === null ? "—" : r.sos.toFixed(1)}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         )}
       </div>
 
