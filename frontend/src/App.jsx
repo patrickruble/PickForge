@@ -19,6 +19,7 @@ const Leagues = lazy(() => import("./pages/Leagues"));
 const LeagueLeaderboard = lazy(() => import("./pages/LeagueLeaderboard"));
 const MyBets = lazy(() => import("./pages/MyBets"));
 const ConnectSleeper = lazy(() => import("./pages/connectsleeper"));
+const SleeperLeague = lazy(() => import("./pages/sleeperleague"));
 
 export default function App() {
   return (
@@ -49,6 +50,7 @@ export default function App() {
               <Route path="/bets" element={<MyBets />} />
               <Route path="/u/:slug" element={<UserProfile />} />
               <Route path="/connect/sleeper" element={<ConnectSleeper />} />
+              <Route path="/sleeper" element={<SleeperLeague />} />
             </Routes>
           </Suspense>
         </main>
