@@ -45,6 +45,7 @@ type PowerRow = {
   luck: number;
   median: WLTTally;
   combined: WLTTally;
+  allplay: WLTTally;
   pf: number;
   sos: number | null;
 };
@@ -74,7 +75,7 @@ export default function SleeperLeague() {
   const [luckByRoster, setLuckByRoster] = useState<Record<number, LuckStats>>({});
   const [powerRows, setPowerRows] = useState<PowerRow[]>([]);
   const [powerSortKey, setPowerSortKey] = useState<
-    "xw" | "luck" | "pf" | "sos" | "actual" | "median" | "combined"
+    "xw" | "luck" | "pf" | "sos" | "actual" | "median" | "combined" | "allplay"
   >("xw");
   const [powerSortDir, setPowerSortDir] = useState<"asc" | "desc">("desc");
 
@@ -170,6 +171,7 @@ export default function SleeperLeague() {
         const pfAcc: Record<number, number> = {};
         const sosSumAcc: Record<number, number> = {};
         const sosCntAcc: Record<number, number> = {};
+        const allPlayAcc: Record<number, WLTTally> = {};
 
         weekDatas.forEach((weekMatchups) => {
           const pts = weekMatchups
@@ -189,6 +191,19 @@ export default function SleeperLeague() {
             pts: typeof m.points === "number" ? m.points : 0,
             matchupId: m.matchup_id,
           }));
+
+          // All-Play: vs every other roster this week
+          for (let i = 0; i < rows.length; i++) {
+            const a = rows[i];
+            if (!allPlayAcc[a.rid]) allPlayAcc[a.rid] = { w: 0, l: 0, t: 0 };
+            for (let j = 0; j < rows.length; j++) {
+              if (i === j) continue;
+              const b = rows[j];
+              if (a.pts > b.pts) allPlayAcc[a.rid].w += 1;
+              else if (a.pts < b.pts) allPlayAcc[a.rid].l += 1;
+              else allPlayAcc[a.rid].t += 1;
+            }
+          }
 
           // PF accumulation
           rows.forEach((r) => {
@@ -296,6 +311,7 @@ export default function SleeperLeague() {
             l: actual.l + medRec.l,
             t: actual.t + medRec.t,
           };
+          const allplay: WLTTally = allPlayAcc[rid] ?? { w: 0, l: 0, t: 0 };
           const pf = pfAcc[rid] ?? 0;
           const sos = sosCntAcc[rid]
             ? (sosSumAcc[rid] ?? 0) / sosCntAcc[rid]
@@ -309,6 +325,7 @@ export default function SleeperLeague() {
             luck: luckVal,
             median: medRec,
             combined,
+            allplay,
             pf,
             sos,
           };
@@ -393,6 +410,8 @@ export default function SleeperLeague() {
           return wltWins(r.median);
         case "combined":
           return wltWins(r.combined);
+        case "allplay":
+          return wltWins(r.allplay);
         default:
           return r.xw;
       }
@@ -413,7 +432,7 @@ export default function SleeperLeague() {
   }, [powerRows, powerSortKey, powerSortDir]);
 
   const onSort = (
-    key: "xw" | "luck" | "pf" | "sos" | "actual" | "median" | "combined"
+    key: "xw" | "luck" | "pf" | "sos" | "actual" | "median" | "combined" | "allplay"
   ) => {
     if (powerSortKey === key) {
       setPowerSortDir((d) => (d === "asc" ? "desc" : "asc"));
@@ -424,7 +443,7 @@ export default function SleeperLeague() {
   };
 
   const sortIndicator = (
-    key: "xw" | "luck" | "pf" | "sos" | "actual" | "median" | "combined"
+    key: "xw" | "luck" | "pf" | "sos" | "actual" | "median" | "combined" | "allplay"
   ) => {
     if (powerSortKey !== key) return "";
     return powerSortDir === "asc" ? " ▲" : " ▼";
@@ -752,6 +771,16 @@ export default function SleeperLeague() {
                   <th className="py-2 pr-2">
                     <button
                       type="button"
+                      onClick={() => onSort("allplay")}
+                      className="hover:underline"
+                      title="Sort by all-play record (vs everyone each week)"
+                    >
+                      All-Play{sortIndicator("allplay")}
+                    </button>
+                  </th>
+                  <th className="py-2 pr-2">
+                    <button
+                      type="button"
                       onClick={() => onSort("pf")}
                       className="hover:underline"
                       title="Sort by points for"
@@ -794,6 +823,7 @@ export default function SleeperLeague() {
                     </td>
                     <td className="py-2 pr-2 tabular-nums">{tallyToString(r.median)}</td>
                     <td className="py-2 pr-2 tabular-nums">{tallyToString(r.combined)}</td>
+                    <td className="py-2 pr-2 tabular-nums">{tallyToString(r.allplay)}</td>
                     <td className="py-2 pr-2 tabular-nums">{r.pf.toFixed(1)}</td>
                     <td className="py-2 tabular-nums">
                       {r.sos === null ? "—" : r.sos.toFixed(1)}
