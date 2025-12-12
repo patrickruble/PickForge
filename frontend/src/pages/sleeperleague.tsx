@@ -72,6 +72,10 @@ export default function SleeperLeague() {
 
   const [luckByRoster, setLuckByRoster] = useState<Record<number, LuckStats>>({});
   const [powerRows, setPowerRows] = useState<PowerRow[]>([]);
+  const [powerSortKey, setPowerSortKey] = useState<
+    "xw" | "luck" | "pf" | "sos" | "actual" | "median"
+  >("xw");
+  const [powerSortDir, setPowerSortDir] = useState<"asc" | "desc">("desc");
 
   useEffect(() => {
     const load = async () => {
@@ -171,7 +175,12 @@ export default function SleeperLeague() {
             .map((m) => (typeof m.points === "number" ? m.points : 0))
             .filter((p) => Number.isFinite(p));
 
+          // Skip unplayed weeks (commonly all zeros)
+          const maxPts = pts.length ? Math.max(...pts) : 0;
+          if (maxPts === 0) return;
+
           const med = median(pts);
+
           // Expected wins (xW): outscored/(teams-1) using weekly points rank
           const nTeams = weekMatchups.length;
           const rows = weekMatchups.map((m) => ({
@@ -349,6 +358,66 @@ export default function SleeperLeague() {
   }, [matchups]);
 
   const weekMedian = useMemo(() => median(weekPoints), [weekPoints]);
+
+  const wltWins = (t?: WLTTally) => {
+    if (!t) return 0;
+    return t.w + 0.5 * t.t;
+  };
+
+  const sortedPowerRows = useMemo(() => {
+    const rows = [...powerRows];
+
+    const valueFor = (r: PowerRow) => {
+      switch (powerSortKey) {
+        case "xw":
+          return r.xw;
+        case "luck":
+          return r.luck;
+        case "pf":
+          return r.pf;
+        case "sos":
+          // put nulls at the end
+          return r.sos === null ? (powerSortDir === "asc" ? Number.POSITIVE_INFINITY : Number.NEGATIVE_INFINITY) : r.sos;
+        case "actual":
+          return wltWins(r.actual);
+        case "median":
+          return wltWins(r.median);
+        default:
+          return r.xw;
+      }
+    };
+
+    rows.sort((a, b) => {
+      const av = valueFor(a);
+      const bv = valueFor(b);
+      if (av === bv) {
+        // tie-breakers: xW then PF
+        if (b.xw !== a.xw) return b.xw - a.xw;
+        return b.pf - a.pf;
+      }
+      return powerSortDir === "asc" ? av - bv : bv - av;
+    });
+
+    return rows;
+  }, [powerRows, powerSortKey, powerSortDir]);
+
+  const onSort = (
+    key: "xw" | "luck" | "pf" | "sos" | "actual" | "median"
+  ) => {
+    if (powerSortKey === key) {
+      setPowerSortDir((d) => (d === "asc" ? "desc" : "asc"));
+    } else {
+      setPowerSortKey(key);
+      setPowerSortDir("desc");
+    }
+  };
+
+  const sortIndicator = (
+    key: "xw" | "luck" | "pf" | "sos" | "actual" | "median"
+  ) => {
+    if (powerSortKey !== key) return "";
+    return powerSortDir === "asc" ? " ▲" : " ▼";
+  };
 
   if (loading) {
     return <div className="p-4">Loading Sleeper league…</div>;
@@ -619,16 +688,70 @@ export default function SleeperLeague() {
                 <tr>
                   <th className="py-2 pr-2">#</th>
                   <th className="py-2 pr-2">Team</th>
-                  <th className="py-2 pr-2">Actual</th>
-                  <th className="py-2 pr-2">xW</th>
-                  <th className="py-2 pr-2">Luck</th>
-                  <th className="py-2 pr-2">Median</th>
-                  <th className="py-2 pr-2">PF</th>
-                  <th className="py-2">SoS</th>
+                  <th className="py-2 pr-2">
+                    <button
+                      type="button"
+                      onClick={() => onSort("actual")}
+                      className="hover:underline"
+                      title="Sort by actual record (wins + 0.5 ties)"
+                    >
+                      Actual{sortIndicator("actual")}
+                    </button>
+                  </th>
+                  <th className="py-2 pr-2">
+                    <button
+                      type="button"
+                      onClick={() => onSort("xw")}
+                      className="hover:underline"
+                      title="Sort by expected wins"
+                    >
+                      xW{sortIndicator("xw")}
+                    </button>
+                  </th>
+                  <th className="py-2 pr-2">
+                    <button
+                      type="button"
+                      onClick={() => onSort("luck")}
+                      className="hover:underline"
+                      title="Sort by luck (actual − xW)"
+                    >
+                      Luck{sortIndicator("luck")}
+                    </button>
+                  </th>
+                  <th className="py-2 pr-2">
+                    <button
+                      type="button"
+                      onClick={() => onSort("median")}
+                      className="hover:underline"
+                      title="Sort by median record (wins + 0.5 ties)"
+                    >
+                      Median{sortIndicator("median")}
+                    </button>
+                  </th>
+                  <th className="py-2 pr-2">
+                    <button
+                      type="button"
+                      onClick={() => onSort("pf")}
+                      className="hover:underline"
+                      title="Sort by points for"
+                    >
+                      PF{sortIndicator("pf")}
+                    </button>
+                  </th>
+                  <th className="py-2">
+                    <button
+                      type="button"
+                      onClick={() => onSort("sos")}
+                      className="hover:underline"
+                      title="Sort by strength of schedule (avg opponent points)"
+                    >
+                      SoS{sortIndicator("sos")}
+                    </button>
+                  </th>
                 </tr>
               </thead>
               <tbody>
-                {powerRows.map((r, i) => (
+                {sortedPowerRows.map((r, i) => (
                   <tr key={r.roster_id} className="border-t border-white/10">
                     <td className="py-2 pr-2 tabular-nums opacity-80">{i + 1}</td>
                     <td className="py-2 pr-2 font-medium">{r.name}</td>
