@@ -36,3 +36,4 @@ backend.env.local
 
 # MacOS junk
 **/.DS_Store
+.vercel

@@ -1,7 +1,19 @@
-import { defineConfig } from 'vite'
-import react from '@vitejs/plugin-react'
+import { defineConfig } from "vite";
+import react from "@vitejs/plugin-react";
 
-// https://vite.dev/config/
 export default defineConfig({
   plugins: [react()],
-})
+  server: {
+    proxy: {
+      "/api/sleeper": {
+        target: "https://api.sleeper.app",
+        changeOrigin: true,
+        rewrite: (path) => path.replace(/^\/api\/sleeper/, "/v1"),
+      },
+      "/api/lines": {
+        target: "http://localhost:8787",
+        changeOrigin: true,
+      },
+    },
+  },
+});
