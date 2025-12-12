@@ -57,6 +57,39 @@ const MIN_WEEK = 1;
 const MAX_WEEK = 18;
 const CREATOR_USERNAME = "ForgeMaster";
 
+function hasMmActivity(s: any): boolean {
+  if (!s) return false;
+  // If the backend computed a mastery score, we consider the user a participant
+  if (typeof s.moneylineMastery === "number") return true;
+
+  // Otherwise, look for any pick-count style fields that indicate MM participation
+  const entries = Object.entries(s as Record<string, any>);
+  for (const [k, v] of entries) {
+    if (typeof v !== "number") continue;
+    const key = k.toLowerCase();
+    // common variants we've used
+    if (
+      (key.includes("moneyline") || key === "mm" || key.includes("mm")) &&
+      (key.includes("pick") || key.includes("picks") || key.includes("count"))
+    ) {
+      if (v > 0) return true;
+    }
+  }
+
+  // Also allow explicit booleans/flags if ever added
+  if (s.mmEntered === true || s.moneylineEntered === true) return true;
+
+  return false;
+}
+
+function getMmScore(s: any): number | null {
+  if (!s) return null;
+  if (typeof s.moneylineMastery === "number") return s.moneylineMastery;
+  // If user has MM activity but score hasn't been computed yet (e.g., all pending), show 0
+  if (hasMmActivity(s)) return 0;
+  return null;
+}
+
 function gradePick(row: PickWithGame): Grade {
   const game = row.game;
   if (!game || game.status !== "final") return "pending";
@@ -468,20 +501,7 @@ export default function Leaderboard() {
     if (metricMode === "mm") {
       base = base.filter((item) => {
         const s = statsByUser[item.user_id];
-        if (!s) return false;
-
-        if (typeof s.moneylineMastery === "number") {
-          return true;
-        }
-
-        const mmCount =
-          typeof (s as any).moneylinePicks === "number"
-            ? (s as any).moneylinePicks
-            : typeof (s as any).mmPicks === "number"
-            ? (s as any).mmPicks
-            : undefined;
-
-        return typeof mmCount === "number" && mmCount > 0;
+        return hasMmActivity(s);
       });
 
       // Sort MM by mastery score, then by standard season standings plus streak/creator tiebreaks
@@ -489,14 +509,8 @@ export default function Leaderboard() {
         const sa = statsByUser[a.user_id];
         const sb = statsByUser[b.user_id];
 
-        const ma =
-          sa && typeof sa.moneylineMastery === "number"
-            ? sa.moneylineMastery
-            : -Infinity;
-        const mb =
-          sb && typeof sb.moneylineMastery === "number"
-            ? sb.moneylineMastery
-            : -Infinity;
+        const ma = getMmScore(sa) ?? -Infinity;
+        const mb = getMmScore(sb) ?? -Infinity;
 
         if (mb !== ma) return mb - ma;
 
@@ -932,11 +946,10 @@ export default function Leaderboard() {
               ? `${seasonStats.currentStreakType}${seasonStats.currentStreakLen}`
               : "—";
 
+          const mmScore = getMmScore(seasonStats);
           const moneylineMasteryText =
-            seasonStats && typeof seasonStats.moneylineMastery === "number"
-              ? `${seasonStats.moneylineMastery >= 0 ? "+" : ""}${seasonStats.moneylineMastery.toFixed(
-                  0
-                )}`
+            typeof mmScore === "number"
+              ? `${mmScore >= 0 ? "+" : ""}${mmScore.toFixed(0)}`
               : "—";
 
           // Primary display based on view / metric
