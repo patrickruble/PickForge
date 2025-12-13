@@ -31,6 +31,8 @@ function formatSigned(n: number, digits: number = 1): string {
   return `${s}${v.toFixed(digits)}`;
 }
 
+const CLOSE_MARGIN = 5; // points or fewer = close win/loss
+
 type LuckStats = {
   actual: WLTTally;
   xw: number;
@@ -46,8 +48,18 @@ type PowerRow = {
   median: WLTTally;
   combined: WLTTally;
   allplay: WLTTally;
+  close: { cw: number; cl: number }; // close wins / close losses
   pf: number;
   sos: number | null;
+};
+
+type WeeklyGradeRow = {
+  roster_id: number;
+  name: string;
+  points: number;
+  result: string;
+  vsMedian: string;
+  grade: string;
 };
 
 export default function SleeperLeague() {
@@ -62,6 +74,8 @@ export default function SleeperLeague() {
 
   // Matchups
   const [week, setWeek] = useState<number>(1);
+  const [autoWeekLoaded, setAutoWeekLoaded] = useState(false);
+  const [latestScoredWeek, setLatestScoredWeek] = useState<number | null>(null);
   const [matchupsLoading, setMatchupsLoading] = useState<boolean>(false);
   const [matchupsError, setMatchupsError] = useState<string | null>(null);
   const [matchups, setMatchups] = useState<SleeperMatchup[]>([]);
@@ -126,6 +140,40 @@ export default function SleeperLeague() {
   }, []);
 
   useEffect(() => {
+    const detectCurrentWeek = async () => {
+      if (!leagueId || autoWeekLoaded) return;
+
+      try {
+        // Try weeks 1–18 and pick the latest week with any non-zero scoring.
+        const weeks = Array.from({ length: 18 }, (_, i) => i + 1);
+        const allWeekData = await Promise.all(
+          weeks.map((w) => getSleeperMatchups(leagueId, w))
+        );
+
+        let bestWeek = 1;
+        allWeekData.forEach((data, idx) => {
+          if (!data || data.length === 0) return;
+          const hasPoints = data.some(
+            (m) => typeof m.points === "number" && m.points > 0
+          );
+          if (hasPoints) {
+            bestWeek = weeks[idx];
+          }
+        });
+
+        setWeek(bestWeek);
+        setLatestScoredWeek(bestWeek);
+      } catch {
+        // If anything fails, just keep the default week = 1
+      } finally {
+        setAutoWeekLoaded(true);
+      }
+    };
+
+    detectCurrentWeek();
+  }, [leagueId, autoWeekLoaded]);
+
+  useEffect(() => {
     const loadMatchups = async () => {
       if (!leagueId) return;
 
@@ -172,6 +220,7 @@ export default function SleeperLeague() {
         const sosSumAcc: Record<number, number> = {};
         const sosCntAcc: Record<number, number> = {};
         const allPlayAcc: Record<number, WLTTally> = {};
+        const closeAcc: Record<number, { cw: number; cl: number }> = {};
 
         weekDatas.forEach((weekMatchups) => {
           const pts = weekMatchups
@@ -252,18 +301,34 @@ export default function SleeperLeague() {
             if (pair.length < 2) return;
             const a = pair[0];
             const b = pair[1];
+
             if (!actualAcc[a.rid]) actualAcc[a.rid] = { w: 0, l: 0, t: 0 };
             if (!actualAcc[b.rid]) actualAcc[b.rid] = { w: 0, l: 0, t: 0 };
+
+            if (!closeAcc[a.rid]) closeAcc[a.rid] = { cw: 0, cl: 0 };
+            if (!closeAcc[b.rid]) closeAcc[b.rid] = { cw: 0, cl: 0 };
+
+            const margin = Math.abs(a.pts - b.pts);
+            const isClose = margin > 0 && margin <= CLOSE_MARGIN;
 
             if (a.pts > b.pts) {
               actualAcc[a.rid].w += 1;
               actualAcc[b.rid].l += 1;
+              if (isClose) {
+                closeAcc[a.rid].cw += 1;
+                closeAcc[b.rid].cl += 1;
+              }
             } else if (a.pts < b.pts) {
               actualAcc[a.rid].l += 1;
               actualAcc[b.rid].w += 1;
+              if (isClose) {
+                closeAcc[a.rid].cl += 1;
+                closeAcc[b.rid].cw += 1;
+              }
             } else {
               actualAcc[a.rid].t += 1;
               actualAcc[b.rid].t += 1;
+              // ties (margin 0) are not counted as close wins/losses
             }
           });
 
@@ -312,6 +377,7 @@ export default function SleeperLeague() {
             t: actual.t + medRec.t,
           };
           const allplay: WLTTally = allPlayAcc[rid] ?? { w: 0, l: 0, t: 0 };
+          const close = closeAcc[rid] ?? { cw: 0, cl: 0 };
           const pf = pfAcc[rid] ?? 0;
           const sos = sosCntAcc[rid]
             ? (sosSumAcc[rid] ?? 0) / sosCntAcc[rid]
@@ -326,6 +392,7 @@ export default function SleeperLeague() {
             median: medRec,
             combined,
             allplay,
+            close,
             pf,
             sos,
           };
@@ -389,6 +456,127 @@ export default function SleeperLeague() {
     if (!t) return 0;
     return t.w + 0.5 * t.t;
   };
+
+  const weeklyGrades = useMemo<WeeklyGradeRow[]>(() => {
+    if (!matchups.length) return [];
+
+    type TmpRow = {
+      roster_id: number;
+      points: number;
+      matchup_id: number | null;
+    };
+
+    const rows: TmpRow[] = matchups.map((m) => ({
+      roster_id: m.roster_id,
+      points: typeof m.points === "number" ? m.points : 0,
+      matchup_id: typeof m.matchup_id === "number" ? m.matchup_id : null,
+    }));
+
+    // Rank teams by points for percentile-based grading
+    const sortedByPts = [...rows].sort((a, b) => b.points - a.points);
+    const n = sortedByPts.length || 1;
+    const rankByRoster: Record<number, number> = {};
+    sortedByPts.forEach((r, idx) => {
+      rankByRoster[r.roster_id] = idx;
+    });
+
+    const gradeFromPct = (pct: number) => {
+      if (pct >= 0.9) return "A+";
+      if (pct >= 0.8) return "A";
+      if (pct >= 0.7) return "B+";
+      if (pct >= 0.6) return "B";
+      if (pct >= 0.5) return "C+";
+      if (pct >= 0.4) return "C";
+      if (pct >= 0.3) return "D+";
+      if (pct >= 0.2) return "D";
+      return "F";
+    };
+
+    // Map of roster_id -> opponent points for this week (if any)
+    const matchupMap = new Map<number, TmpRow[]>();
+    rows.forEach((r) => {
+      if (r.matchup_id === null) return;
+      const group = matchupMap.get(r.matchup_id) ?? [];
+      group.push(r);
+      matchupMap.set(r.matchup_id, group);
+    });
+
+    const opponentPts: Record<number, number | null> = {};
+    matchupMap.forEach((group) => {
+      if (group.length < 2) {
+        group.forEach((r) => {
+          if (opponentPts[r.roster_id] === undefined) {
+            opponentPts[r.roster_id] = null;
+          }
+        });
+        return;
+      }
+      const [a, b] = group;
+      opponentPts[a.roster_id] = b.points;
+      opponentPts[b.roster_id] = a.points;
+    });
+
+    const out: WeeklyGradeRow[] = rows.map((r) => {
+      const name =
+        rosterNameById.get(r.roster_id) ?? `Roster ${r.roster_id}`;
+
+      const rank = rankByRoster[r.roster_id] ?? 0;
+      const pct = n > 1 ? 1 - rank / (n - 1) : 1;
+      const grade = gradeFromPct(pct);
+
+      const opp = opponentPts[r.roster_id] ?? null;
+      let result = "-";
+      if (opp !== null) {
+        if (r.points > opp) result = "W";
+        else if (r.points < opp) result = "L";
+        else result = "T";
+      }
+
+      let vsMedian = "-";
+      if (weekMedian !== null) {
+        if (r.points > weekMedian) vsMedian = "Above";
+        else if (r.points < weekMedian) vsMedian = "Below";
+        else vsMedian = "At";
+      }
+
+      return {
+        roster_id: r.roster_id,
+        name,
+        points: r.points,
+        result,
+        vsMedian,
+        grade,
+      };
+    });
+
+    // Sort grades by points scored this week, descending
+    out.sort((a, b) => b.points - a.points);
+
+    return out;
+  }, [matchups, rosterNameById, weekMedian]);
+
+
+  const medianStandings = useMemo(() => {
+    const rows = rosters.map((r) => {
+      const rid = r.roster_id;
+      const name = rosterNameById.get(rid) ?? `Roster ${rid}`;
+      const med = medianRecordByRoster[rid] ?? { w: 0, l: 0, t: 0 };
+      const wins = wltWins(med);
+      const games = med.w + med.l + med.t;
+      const pct = games > 0 ? wins / games : 0;
+      const pf = powerRows.find((p) => p.roster_id === rid)?.pf ?? 0;
+      return { roster_id: rid, name, med, wins, games, pct, pf };
+    });
+
+    rows.sort((a, b) => {
+      if (b.wins !== a.wins) return b.wins - a.wins;
+      // tie-breakers: win% then PF
+      if (b.pct !== a.pct) return b.pct - a.pct;
+      return b.pf - a.pf;
+    });
+
+    return rows;
+  }, [rosters, rosterNameById, medianRecordByRoster, powerRows]);
 
   const sortedPowerRows = useMemo(() => {
     const rows = [...powerRows];
@@ -471,6 +659,48 @@ export default function SleeperLeague() {
       </div>
 
       <div className="mb-8 rounded-lg border p-4">
+      <div className="mb-8 rounded-lg border p-4">
+        <div className="mb-3 flex items-end justify-between gap-3">
+          <div>
+            <h2 className="text-lg font-semibold">Median Standings</h2>
+            <p className="text-xs opacity-70">
+              Standings if each week you played the league median (above median = win, below = loss).
+            </p>
+          </div>
+        </div>
+
+        {medianRecLoading ? (
+          <div className="text-sm opacity-80">Computing median standings…</div>
+        ) : medianStandings.length === 0 ? (
+          <div className="text-sm opacity-80">No median data yet.</div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead className="text-left text-xs opacity-70">
+                <tr>
+                  <th className="py-2 pr-2">#</th>
+                  <th className="py-2 pr-2">Team</th>
+                  <th className="py-2 pr-2">Median</th>
+                  <th className="py-2 pr-2" title="Median win percentage">Med %</th>
+                  <th className="py-2" title="Points for (tie-breaker)">PF</th>
+                </tr>
+              </thead>
+              <tbody>
+                {medianStandings.map((r, i) => (
+                  <tr key={r.roster_id} className="border-t border-white/10">
+                    <td className="py-2 pr-2 tabular-nums opacity-80">{i + 1}</td>
+                    <td className="py-2 pr-2 font-medium">{r.name}</td>
+                    <td className="py-2 pr-2 tabular-nums">{tallyToString(r.med)}</td>
+                    <td className="py-2 pr-2 tabular-nums">{(r.pct * 100).toFixed(1)}%</td>
+                    <td className="py-2 tabular-nums">{r.pf.toFixed(1)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+
         <div className="mb-3 flex items-end justify-between gap-3">
           <div>
             <h2 className="text-lg font-semibold">Matchups</h2>
@@ -695,6 +925,54 @@ export default function SleeperLeague() {
             })}
           </ul>
         )}
+
+        {!matchupsLoading &&
+          !matchupsError &&
+          weeklyGrades.length > 0 &&
+          latestScoredWeek !== null &&
+          week < latestScoredWeek && (
+          <div className="mt-6 border-t pt-4">
+            <h3 className="mb-2 text-sm font-semibold">Weekly Grades</h3>
+            <p className="mb-2 text-xs opacity-70">
+              Grades are based on this week's points compared to the rest of the league.
+            </p>
+            <div className="overflow-x-auto">
+              <table className="w-full text-xs">
+                <thead className="text-left opacity-70">
+                  <tr>
+                    <th className="py-1 pr-2">#</th>
+                    <th className="py-1 pr-2">Team</th>
+                    <th className="py-1 pr-2">Pts</th>
+                    <th className="py-1 pr-2">Result</th>
+                    <th className="py-1 pr-2">Vs median</th>
+                    <th className="py-1">Grade</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {weeklyGrades.map((row, idx) => (
+                    <tr
+                      key={row.roster_id}
+                      className="border-t border-white/10"
+                    >
+                      <td className="py-1 pr-2 tabular-nums opacity-80">
+                        {idx + 1}
+                      </td>
+                      <td className="py-1 pr-2 truncate">{row.name}</td>
+                      <td className="py-1 pr-2 tabular-nums">
+                        {row.points.toFixed(1)}
+                      </td>
+                      <td className="py-1 pr-2 tabular-nums">{row.result}</td>
+                      <td className="py-1 pr-2">{row.vsMedian}</td>
+                      <td className="py-1 tabular-nums font-semibold">
+                        {row.grade}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
       </div>
 
       <div className="mb-8 rounded-lg border p-4">
@@ -702,7 +980,7 @@ export default function SleeperLeague() {
           <div>
             <h2 className="text-lg font-semibold">Power Rankings</h2>
             <p className="text-xs opacity-70">
-              Sorted by expected wins (xW). Luck shows actual − xW. SoS is average opponent points faced.
+              Sorted by expected wins (xW). Luck shows actual − xW. SoS is average opponent points faced. Close (W/L) are games decided by ≤{CLOSE_MARGIN} pts.
             </p>
           </div>
         </div>
@@ -778,6 +1056,9 @@ export default function SleeperLeague() {
                       All-Play{sortIndicator("allplay")}
                     </button>
                   </th>
+                  <th className="py-2 pr-2" title={`Games decided by ≤${CLOSE_MARGIN} pts`}>
+                    Close (W/L)
+                  </th>
                   <th className="py-2 pr-2">
                     <button
                       type="button"
@@ -824,6 +1105,9 @@ export default function SleeperLeague() {
                     <td className="py-2 pr-2 tabular-nums">{tallyToString(r.median)}</td>
                     <td className="py-2 pr-2 tabular-nums">{tallyToString(r.combined)}</td>
                     <td className="py-2 pr-2 tabular-nums">{tallyToString(r.allplay)}</td>
+                    <td className="py-2 pr-2 tabular-nums">
+                      {r.close.cw}-{r.close.cl}
+                    </td>
                     <td className="py-2 pr-2 tabular-nums">{r.pf.toFixed(1)}</td>
                     <td className="py-2 tabular-nums">
                       {r.sos === null ? "—" : r.sos.toFixed(1)}
@@ -836,35 +1120,6 @@ export default function SleeperLeague() {
         )}
       </div>
 
-      <h2 className="mb-3 text-lg font-semibold">Teams</h2>
-
-      <ul className="space-y-2">
-        {rosters.map((roster) => {
-          const owner = roster.owner_id
-            ? userById.get(roster.owner_id)
-            : null;
-
-          return (
-            <li
-              key={roster.roster_id}
-              className="flex items-center justify-between rounded-lg border p-3"
-            >
-              <div>
-                <div className="font-medium">
-                  {owner?.display_name ?? "Unassigned Team"}
-                </div>
-                <div className="text-xs opacity-70">
-                  Roster ID: {roster.roster_id}
-                </div>
-              </div>
-
-              <div className="text-sm opacity-80">
-                Players: {roster.players?.length ?? 0}
-              </div>
-            </li>
-          );
-        })}
-      </ul>
     </div>
   );
 }
