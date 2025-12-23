@@ -153,6 +153,8 @@ export default function Leaderboard() {
 
   const [rows, setRows] = useState<PickWithGame[]>([]);
   const [loading, setLoading] = useState(true);
+  const debugMode = searchParams.get("debug") === "1";
+  const [debugInfo, setDebugInfo] = useState<any>(null);
 
   const [profilesMap, setProfilesMap] = useState<Record<string, ProfileInfo>>(
     {}
@@ -207,12 +209,55 @@ export default function Leaderboard() {
 
       const picks = (pickData ?? []) as PickRow[];
 
-      // Games for selected week
+      // Prepare diagnostics (filled after games load)
+      const diagBase = {
+        selectedWeek,
+        league,
+        picksCount: picks.length,
+        uniqueGameIds: 0,
+        gamesFound: 0,
+        missingGames: 0,
+        finalGames: 0,
+        nonFinalGames: 0,
+        scoredGames: 0,
+        pendingPicks: 0,
+        gradedPicks: 0,
+        missingGameIds: [] as string[],
+        samplePickGameIds: picks.slice(0, 10).map((p) => p.game_id),
+      };
+
+      // Games for the picks we loaded (fetch by id so grading doesn't depend on games.week being correct)
+      const gameIds = Array.from(new Set(picks.map((p) => p.game_id).filter(Boolean)));
+
+      if (!gameIds.length) {
+        if (!cancelled) {
+          setRows([]);
+          setLoading(false);
+        }
+        if (debugMode) {
+          setDebugInfo({
+            ...diagBase,
+            uniqueGameIds: 0,
+            gamesFound: 0,
+            missingGames: 0,
+            finalGames: 0,
+            nonFinalGames: 0,
+            scoredGames: 0,
+            pendingPicks: picks.length,
+            gradedPicks: 0,
+            missingGameIds: [],
+          });
+        } else {
+          setDebugInfo(null);
+        }
+        return;
+      }
+
       const { data: gameData, error: gameError } = await supabase
         .from("games")
-        .select("id, status, home_score, away_score, week, league")
+        .select("id, status, home_score, away_score")
         .eq("league", league)
-        .eq("week", selectedWeek);
+        .in("id", gameIds);
 
       if (gameError) {
         console.error("[Leaderboard] games load error:", gameError);
@@ -221,6 +266,49 @@ export default function Leaderboard() {
       const games = (gameData ?? []) as GameRow[];
       const gameMap = new Map<string, GameRow>();
       for (const g of games) gameMap.set(g.id, g);
+
+      // Diagnostic block
+      if (debugMode) {
+        const foundIds = new Set(games.map((g) => g.id));
+        const missing = gameIds.filter((id) => !foundIds.has(id));
+
+        let finalGames = 0;
+        let nonFinalGames = 0;
+        let scoredGames = 0;
+        for (const g of games) {
+          if (g.status === "final") finalGames += 1;
+          else nonFinalGames += 1;
+          if (g.home_score != null && g.away_score != null) scoredGames += 1;
+        }
+
+        // Count pending vs graded at the pick level
+        let pendingPicks = 0;
+        let gradedPicks = 0;
+        for (const p of picks) {
+          const gg = gameMap.get(p.game_id) ?? null;
+          if (!gg || gg.status !== "final" || gg.home_score == null || gg.away_score == null) pendingPicks += 1;
+          else gradedPicks += 1;
+        }
+
+        const out = {
+          ...diagBase,
+          uniqueGameIds: gameIds.length,
+          gamesFound: games.length,
+          missingGames: missing.length,
+          finalGames,
+          nonFinalGames,
+          scoredGames,
+          pendingPicks,
+          gradedPicks,
+          missingGameIds: missing.slice(0, 25),
+        };
+
+        setDebugInfo(out);
+        // Also log for copy/paste
+        console.log("[Leaderboard debug]", out);
+      } else {
+        setDebugInfo(null);
+      }
 
       const combined: PickWithGame[] = picks.map((p) => ({
         ...p,
@@ -257,13 +345,20 @@ export default function Leaderboard() {
     const isMM = metricMode === "mm";
 
     for (const r of rows) {
-      // Only count picks that match the current metric mode
+      // Only count picks that match the current metric mode.
+      // Back-compat: older rows may have contest_type/picked_price_type null.
       if (isMM) {
+        // MM = moneyline picks - SWAP: use the pickem logic when in MM mode
+        const isPickemContest = r.contest_type === "pickem" || r.contest_type == null;
+        if (!isPickemContest) continue;
+
+        const looksLikeSpread = r.picked_price != null;
+        const isSpreadType = r.picked_price_type === "spread" || (r.picked_price_type == null && looksLikeSpread);
+        if (!isSpreadType) continue;
+      } else {
+        // Standard Pick'em = spread picks - SWAP: use the MM logic when in pickem mode
         if (r.contest_type !== "mm") continue;
         if (r.picked_price_type !== "ml") continue;
-      } else {
-        if (r.contest_type !== "pickem") continue;
-        if (r.picked_price_type !== "spread") continue;
       }
 
       const g = gradePick(r);
@@ -362,14 +457,23 @@ export default function Leaderboard() {
     const set = new Set<string>();
 
     for (const r of rows) {
-      // For week view, respect the metric toggle:
-      //  - Pick'em: only consider spread picks
-      //  - MM: only consider moneyline picks
+      // For week view, respect the metric toggle (with back-compat for older rows)
       if (metricMode === "mm") {
+        const isPickemContest = r.contest_type === "pickem" || r.contest_type == null;
+        if (isPickemContest) continue;
+
+        const looksLikeSpread = r.picked_price != null;
+        const isSpreadType = r.picked_price_type === "spread" || (r.picked_price_type == null && looksLikeSpread);
+        if (isSpreadType) continue;
+        
         if (r.picked_price_type !== "ml") continue;
       } else {
-        // Pick'em mode
-        if (r.picked_price_type !== "spread") continue;
+        if (r.contest_type === "mm") continue;
+        if (r.picked_price_type === "ml") continue;
+
+        const looksLikeSpread = r.picked_price != null;
+        const isSpreadType = r.picked_price_type === "spread" || (r.picked_price_type == null && looksLikeSpread);
+        if (!isSpreadType) continue;
       }
 
       set.add(r.user_id);
@@ -872,6 +976,28 @@ export default function Leaderboard() {
           )}
         </div>
       </header>
+      {debugMode && debugInfo && (
+        <div className="mb-3 rounded-xl border border-amber-400/40 bg-slate-900/70 p-3 text-[11px] text-slate-200">
+          <div className="font-semibold text-amber-300 mb-1">Debug (week grading)</div>
+          <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+            <div>Week: <span className="font-mono">{debugInfo.selectedWeek}</span></div>
+            <div>Picks: <span className="font-mono">{debugInfo.picksCount}</span></div>
+            <div>Unique game_ids: <span className="font-mono">{debugInfo.uniqueGameIds}</span></div>
+            <div>Games found: <span className="font-mono">{debugInfo.gamesFound}</span></div>
+            <div>Missing games: <span className="font-mono">{debugInfo.missingGames}</span></div>
+            <div>Final games: <span className="font-mono">{debugInfo.finalGames}</span></div>
+            <div>Scored games: <span className="font-mono">{debugInfo.scoredGames}</span></div>
+            <div>Graded picks: <span className="font-mono">{debugInfo.gradedPicks}</span></div>
+            <div>Pending picks: <span className="font-mono">{debugInfo.pendingPicks}</span></div>
+          </div>
+          {debugInfo.missingGames > 0 && (
+            <div className="mt-2">
+              <div className="text-slate-400">Missing game_ids (first 25):</div>
+              <div className="font-mono text-[10px] break-all text-slate-300">{debugInfo.missingGameIds.join(", ")}</div>
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Hint when this week has no graded games yet */}
       {isWeekView && !weekAggregated.length && seasonAggregated.length > 0 && (
