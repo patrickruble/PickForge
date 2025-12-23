@@ -9,7 +9,18 @@ export type MarketType =
   | "anytime_td"
   | "alt_line"       // alt spread/total/team total
   | "future"
-  | "other";
+  | "other"
+  // Parlays (generic + market-specific)
+  | "parlay"
+  | "moneyline_parlay"
+  | "spread_parlay"
+  | "total_parlay"
+  | "team_total_parlay"
+  | "player_prop_parlay"
+  | "game_prop_parlay"
+  | "first_td_parlay"
+  | "anytime_td_parlay"
+  | "alt_line_parlay";
 
 export type SideType =
   | "home"
