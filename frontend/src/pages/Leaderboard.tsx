@@ -483,37 +483,49 @@ export default function Leaderboard() {
   }, [rows, metricMode]);
 
   // Week view: show all players who picked this week, ordered by season standings
-  const weekViewAggregated: LeaderItem[] = useMemo(() => {
-    if (!weekParticipants.length) return [];
+  // Week view: show all players who picked this week, ordered by week performance
+const weekViewAggregated: LeaderItem[] = useMemo(() => {
+  if (!weekParticipants.length) return [];
 
-    const participantSet = new Set(weekParticipants);
-    const list: LeaderItem[] = [];
+  const weekStatsMap = new Map(weekAggregated.map(item => [item.user_id, item]));
+  const list: LeaderItem[] = [];
 
-    // First: players who have season stats, in season order
-    for (const item of seasonAggregated) {
-      if (participantSet.has(item.user_id)) {
-        list.push(item);
-      }
+  // Build list of all participants with their week stats
+  for (const user_id of weekParticipants) {
+    const weekStats = weekStatsMap.get(user_id);
+    
+    if (weekStats) {
+      // Has graded week stats - use those
+      list.push({
+        ...weekStats,
+        profile: profilesMap[user_id],
+      });
+    } else {
+      // Picked this week but no graded games yet
+      list.push({
+        user_id,
+        wins: 0,
+        losses: 0,
+        pushes: 0,
+        total: 0,
+        winPct: 0,
+        profile: profilesMap[user_id],
+      });
     }
+  }
 
-    // Then: players who picked this week but have no graded season picks yet
-    const alreadyIncluded = new Set(list.map((i) => i.user_id));
-    for (const user_id of weekParticipants) {
-      if (!alreadyIncluded.has(user_id)) {
-        list.push({
-          user_id,
-          wins: 0,
-          losses: 0,
-          pushes: 0,
-          total: 0,
-          winPct: 0,
-          profile: profilesMap[user_id],
-        });
-      }
-    }
+  // Sort by WEEK performance (not season)
+  list.sort((a, b) => {
+    // First by win percentage
+    if (b.winPct !== a.winPct) return b.winPct - a.winPct;
+    // Then by total wins
+    if (b.wins !== a.wins) return b.wins - a.wins;
+    // Then by total games (more games = ranked higher if tied on wins)
+    return b.total - a.total;
+  });
 
-    return list;
-  }, [weekParticipants, seasonAggregated, profilesMap]);
+  return list;
+}, [weekParticipants, weekAggregated, profilesMap]);
 
   // For loading profiles, consider week users, season users, and anyone with picks this week
   const allAggregatedForProfiles: LeaderItem[] = useMemo(() => {
