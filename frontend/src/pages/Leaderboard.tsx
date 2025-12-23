@@ -92,11 +92,18 @@ function getMmScore(s: any): number | null {
 
 function gradePick(row: PickWithGame): Grade {
   const game = row.game;
-  if (!game || game.status !== "final") return "pending";
+  if (!game) return "pending";
 
   const home = game.home_score ?? null;
   const away = game.away_score ?? null;
-  if (home == null || away == null) return "pending";
+
+  // Score-first: if scores exist, we can grade even if status is missing/mismatched.
+  const hasScores = home != null && away != null;
+  const status = typeof game.status === "string" ? game.status.toLowerCase() : "";
+  const isTerminalStatus = ["final", "complete", "completed", "post", "closed"].includes(status);
+
+  if (!hasScores && !isTerminalStatus) return "pending";
+  if (!hasScores) return "pending";
 
   const pickedScore = row.side === "home" ? home : away;
   const otherScore = row.side === "home" ? away : home;
@@ -281,12 +288,13 @@ export default function Leaderboard() {
           if (g.home_score != null && g.away_score != null) scoredGames += 1;
         }
 
-        // Count pending vs graded at the pick level
+        // Count pending vs graded at the pick level (use the same grading logic as the UI)
         let pendingPicks = 0;
         let gradedPicks = 0;
         for (const p of picks) {
           const gg = gameMap.get(p.game_id) ?? null;
-          if (!gg || gg.status !== "final" || gg.home_score == null || gg.away_score == null) pendingPicks += 1;
+          const g = gradePick({ ...(p as any), game: gg });
+          if (g === "pending") pendingPicks += 1;
           else gradedPicks += 1;
         }
 
@@ -348,17 +356,26 @@ export default function Leaderboard() {
       // Only count picks that match the current metric mode.
       // Back-compat: older rows may have contest_type/picked_price_type null.
       if (isMM) {
-        // MM = moneyline picks - SWAP: use the pickem logic when in MM mode
+        // MM = moneyline picks
+        const looksLikeML = r.picked_price == null;
+        const isMmContest =
+          r.contest_type === "mm" || (r.contest_type == null && looksLikeML);
+        if (!isMmContest) continue;
+
+        const isMlType =
+          r.picked_price_type === "ml" ||
+          (r.picked_price_type == null && looksLikeML);
+        if (!isMlType) continue;
+      } else {
+        // Standard Pick'em = spread picks
         const isPickemContest = r.contest_type === "pickem" || r.contest_type == null;
         if (!isPickemContest) continue;
 
         const looksLikeSpread = r.picked_price != null;
-        const isSpreadType = r.picked_price_type === "spread" || (r.picked_price_type == null && looksLikeSpread);
+        const isSpreadType =
+          r.picked_price_type === "spread" ||
+          (r.picked_price_type == null && looksLikeSpread);
         if (!isSpreadType) continue;
-      } else {
-        // Standard Pick'em = spread picks - SWAP: use the MM logic when in pickem mode
-        if (r.contest_type !== "mm") continue;
-        if (r.picked_price_type !== "ml") continue;
       }
 
       const g = gradePick(r);
@@ -459,20 +476,23 @@ export default function Leaderboard() {
     for (const r of rows) {
       // For week view, respect the metric toggle (with back-compat for older rows)
       if (metricMode === "mm") {
-        const isPickemContest = r.contest_type === "pickem" || r.contest_type == null;
-        if (isPickemContest) continue;
+        const looksLikeML = r.picked_price == null;
+        const isMmContest =
+          r.contest_type === "mm" || (r.contest_type == null && looksLikeML);
+        if (!isMmContest) continue;
 
-        const looksLikeSpread = r.picked_price != null;
-        const isSpreadType = r.picked_price_type === "spread" || (r.picked_price_type == null && looksLikeSpread);
-        if (isSpreadType) continue;
-        
-        if (r.picked_price_type !== "ml") continue;
+        const isMlType =
+          r.picked_price_type === "ml" ||
+          (r.picked_price_type == null && looksLikeML);
+        if (!isMlType) continue;
       } else {
-        if (r.contest_type === "mm") continue;
-        if (r.picked_price_type === "ml") continue;
+        const isPickemContest = r.contest_type === "pickem" || r.contest_type == null;
+        if (!isPickemContest) continue;
 
         const looksLikeSpread = r.picked_price != null;
-        const isSpreadType = r.picked_price_type === "spread" || (r.picked_price_type == null && looksLikeSpread);
+        const isSpreadType =
+          r.picked_price_type === "spread" ||
+          (r.picked_price_type == null && looksLikeSpread);
         if (!isSpreadType) continue;
       }
 
@@ -482,50 +502,49 @@ export default function Leaderboard() {
     return Array.from(set);
   }, [rows, metricMode]);
 
-  // Week view: show all players who picked this week, ordered by season standings
   // Week view: show all players who picked this week, ordered by week performance
-const weekViewAggregated: LeaderItem[] = useMemo(() => {
-  if (!weekParticipants.length) return [];
+  const weekViewAggregated: LeaderItem[] = useMemo(() => {
+    if (!weekParticipants.length) return [];
 
-  const weekStatsMap = new Map(weekAggregated.map(item => [item.user_id, item]));
-  const list: LeaderItem[] = [];
+    const weekStatsMap = new Map(weekAggregated.map(item => [item.user_id, item]));
+    const list: LeaderItem[] = [];
 
-  // Build list of all participants with their week stats
-  for (const user_id of weekParticipants) {
-    const weekStats = weekStatsMap.get(user_id);
-    
-    if (weekStats) {
-      // Has graded week stats - use those
-      list.push({
-        ...weekStats,
-        profile: profilesMap[user_id],
-      });
-    } else {
-      // Picked this week but no graded games yet
-      list.push({
-        user_id,
-        wins: 0,
-        losses: 0,
-        pushes: 0,
-        total: 0,
-        winPct: 0,
-        profile: profilesMap[user_id],
-      });
+    // Build list of all participants with their week stats
+    for (const user_id of weekParticipants) {
+      const weekStats = weekStatsMap.get(user_id);
+      
+      if (weekStats) {
+        // Has graded week stats - use those
+        list.push({
+          ...weekStats,
+          profile: profilesMap[user_id],
+        });
+      } else {
+        // Picked this week but no graded games yet
+        list.push({
+          user_id,
+          wins: 0,
+          losses: 0,
+          pushes: 0,
+          total: 0,
+          winPct: 0,
+          profile: profilesMap[user_id],
+        });
+      }
     }
-  }
 
-  // Sort by WEEK performance (not season)
-  list.sort((a, b) => {
-    // First by win percentage
-    if (b.winPct !== a.winPct) return b.winPct - a.winPct;
-    // Then by total wins
-    if (b.wins !== a.wins) return b.wins - a.wins;
-    // Then by total games (more games = ranked higher if tied on wins)
-    return b.total - a.total;
-  });
+    // Sort by WEEK performance (not season)
+    list.sort((a, b) => {
+      // First by win percentage
+      if (b.winPct !== a.winPct) return b.winPct - a.winPct;
+      // Then by total wins
+      if (b.wins !== a.wins) return b.wins - a.wins;
+      // Then by total games (more games = ranked higher if tied on wins)
+      return b.total - a.total;
+    });
 
-  return list;
-}, [weekParticipants, weekAggregated, profilesMap]);
+    return list;
+  }, [weekParticipants, weekAggregated, profilesMap]);
 
   // For loading profiles, consider week users, season users, and anyone with picks this week
   const allAggregatedForProfiles: LeaderItem[] = useMemo(() => {
