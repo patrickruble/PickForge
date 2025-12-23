@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "../../lib/supabase";
 import { ensureSession } from "../../lib/session";
+import type { ParsedSlip } from "./types/parsedSlip";
 
 const BUCKET = "bet-slips";
 
@@ -91,6 +92,20 @@ export default function UploadSlip() {
 
     const imagePath = `${uid}/${slipId}.${ext}`;
 
+    const stubParsed: ParsedSlip = {
+      book: null,
+      ticket_no: null,
+      placed_at: null,
+      wager: null,
+      to_win: null,
+      odds_american: null,
+      currency: "USD",
+      bet_style: "unknown",
+      legs_count: null,
+      bets: [],
+      meta: { parser_version: "dev", source: "stub" },
+    };
+
     try {
       const { error: upErr } = await supabase.storage.from(BUCKET).upload(imagePath, file, {
         upsert: true,
@@ -106,6 +121,7 @@ export default function UploadSlip() {
           user_id: uid,
           status: "uploaded",
           image_path: imagePath,
+          parsed: stubParsed,
         } as any)
         .select("id")
         .single();
@@ -117,6 +133,7 @@ export default function UploadSlip() {
             user_id: uid,
             status: "uploaded",
             image_path: imagePath,
+            parsed: stubParsed,
           } as any)
           .select("id")
           .single();

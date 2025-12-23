@@ -1,13 +1,14 @@
 import { useEffect, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { supabase } from "../../lib/supabase";
+import type { ParsedSlip } from "./types/parsedSlip";
 
 type BetSlipRow = {
   id: string;
   user_id: string;
   status: string | null;
   image_path: string | null;
-  parsed: any | null;
+  parsed: ParsedSlip | null;
   raw_ocr: any | null;
 };
 
@@ -51,7 +52,7 @@ export default function ReviewSlip() {
         return;
       }
 
-      const row = (data as BetSlipRow) ?? null;
+      const row: BetSlipRow | null = (data as BetSlipRow) ?? null;
       setSlip(row);
 
       // Build a signed URL for private bucket previews
@@ -223,9 +224,19 @@ export default function ReviewSlip() {
 
         <div className="mt-4">
           <div className="text-xs uppercase tracking-wide text-slate-500">Parsed (draft)</div>
-          <pre className="mt-2 text-[12px] leading-snug text-slate-200 bg-slate-950/60 border border-slate-800 rounded-xl p-3 overflow-auto">
-            {JSON.stringify(slip.parsed ?? {}, null, 2)}
-          </pre>
+
+          {(() => {
+            const parsed: ParsedSlip = slip.parsed ?? {
+              bets: [],
+              meta: { parser_version: "dev", source: "stub" },
+            };
+
+            return (
+              <pre className="mt-2 text-[12px] leading-snug text-slate-200 bg-slate-950/60 border border-slate-800 rounded-xl p-3 overflow-auto">
+                {JSON.stringify(parsed, null, 2)}
+              </pre>
+            );
+          })()}
 
           <p className="text-[11px] text-slate-500 mt-3">
             Next step: render editable bet rows here (one per leg), allow user corrections, then on Confirm insert rows into <span className="font-mono">public.bets</span>.
