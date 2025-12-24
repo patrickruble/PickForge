@@ -293,6 +293,46 @@ export default function ReviewSlip() {
         (Array.isArray(parsed.bets) &&
           parsed.bets.length > 1 &&
           parsed.bets.every((x) => x?.kind === "parlay_leg"));
+      // Persist the edited draft back into bet_slips.parsed so a refresh keeps the reviewed values.
+      const reviewedParsed: ParsedSlip = {
+        ...parsed,
+        bet_style: parsed.bet_style ?? (isParlay ? "parlay" : null),
+        legs_count: parsed.legs_count ?? (isParlay ? betsDraft.length : null),
+        bets: betsDraft.map((b) => ({
+          kind: isParlay ? ("parlay_leg" as const) : ("single" as const),
+          sport: b.sport ?? null,
+          league: b.league ?? null,
+          event: b.event ?? null,
+          event_date: b.event_date ?? null,
+          home_team: null,
+          away_team: null,
+          market_type: b.market_type,
+          market_text: null,
+          selection_text: b.selection_text,
+          player: null,
+          stat: null,
+          period: null,
+          line: b.line ?? null,
+          side: b.side ?? null,
+          team: null,
+          odds_american: b.odds_american ?? null,
+          is_alt: null,
+          is_live: null,
+          confidence: Number.isFinite(b.confidence) ? b.confidence : 0,
+          issues: Array.isArray(b.issues) ? b.issues : [],
+        })),
+        meta: parsed.meta ?? { parser_version: "dev", source: "ocr" },
+      };
+
+      // Best-effort: save reviewedParsed before inserting bets (do not block confirm on this)
+      const { error: saveReviewedErr } = await supabase
+        .from("bet_slips")
+        .update({ parsed: reviewedParsed })
+        .eq("id", slip.id);
+      if (saveReviewedErr) {
+        console.warn("[ReviewSlip] could not persist reviewed parsed slip", saveReviewedErr);
+      }
+
 
       const slipStake = safeNumber(parsed.wager);
       const slipToWin = safeNumber(parsed.to_win);
@@ -339,6 +379,8 @@ export default function ReviewSlip() {
               notes: JSON.stringify(
                 {
                   kind: "parlay",
+                  slip_id: slip.id,
+                  slip_image_path: slip.image_path ?? null,
                   ticket_no: parsed.ticket_no ?? null,
                   placed_at: parsed.placed_at ?? null,
                   wager: slipStake ?? null,
@@ -386,16 +428,38 @@ export default function ReviewSlip() {
                 Number.isFinite(b.confidence) && b.confidence >= 0
                   ? Math.max(1, Math.min(5, Math.round(b.confidence * 5)))
                   : null,
+              notes: JSON.stringify(
+                {
+                  kind: "single",
+                  slip_id: slip.id,
+                  slip_image_path: slip.image_path ?? null,
+                  ticket_no: parsed.ticket_no ?? null,
+                  placed_at: parsed.placed_at ?? null,
+                  market_type: b.market_type,
+                  selection_text: b.selection_text,
+                  odds_american: b.odds_american ?? null,
+                  league: b.league ?? null,
+                  sport: b.sport ?? null,
+                  event: b.event ?? null,
+                  event_date: b.event_date ?? null,
+                  side: b.side,
+                  line: b.line,
+                  issues: b.issues,
+                  confidence: b.confidence,
+                },
+                null,
+                0
+              ),
             };
           });
 
       const { error: insErr } = await supabase.from("bets").insert(inserts);
       if (insErr) throw insErr;
 
-      // Optionally mark slip as confirmed if column exists; ignore errors
+      // Optionally mark slip as confirmed and save reviewed parsed slip as well; ignore errors
       const { error: updErr } = await supabase
         .from("bet_slips")
-        .update({ status: "confirmed" })
+        .update({ status: "confirmed", parsed: reviewedParsed })
         .eq("id", slip.id);
       if (updErr) {
         console.warn("[ReviewSlip] could not update slip status", updErr);
