@@ -51,6 +51,7 @@ type PowerRow = {
   close: { cw: number; cl: number }; // close wins / close losses
   pf: number;
   sos: number | null;
+  schedule: number | null;
 };
 
 type WeeklyGradeRow = {
@@ -89,8 +90,8 @@ export default function SleeperLeague() {
   const [luckByRoster, setLuckByRoster] = useState<Record<number, LuckStats>>({});
   const [powerRows, setPowerRows] = useState<PowerRow[]>([]);
   const [powerSortKey, setPowerSortKey] = useState<
-    "xw" | "luck" | "pf" | "sos" | "actual" | "median" | "combined" | "allplay"
-  >("xw");
+  "xw" | "luck" | "pf" | "sos" | "schedule" | "actual" | "median" | "combined" | "allplay"
+>("xw");
   const [powerSortDir, setPowerSortDir] = useState<"asc" | "desc">("desc");
 
   useEffect(() => {
@@ -219,6 +220,8 @@ export default function SleeperLeague() {
         const pfAcc: Record<number, number> = {};
         const sosSumAcc: Record<number, number> = {};
         const sosCntAcc: Record<number, number> = {};
+        const schedSumAcc: Record<number, number> = {};
+        const schedCntAcc: Record<number, number> = {};
         const allPlayAcc: Record<number, WLTTally> = {};
         const closeAcc: Record<number, { cw: number; cl: number }> = {};
 
@@ -232,6 +235,9 @@ export default function SleeperLeague() {
           if (maxPts === 0) return;
 
           const med = median(pts);
+          const leagueAvg = pts.length
+          ? pts.reduce((sum, v) => sum + (Number.isFinite(v) ? v : 0), 0) / pts.length
+          : 0;
 
           // Expected wins (xW): outscored/(teams-1) using weekly points rank
           const nTeams = weekMatchups.length;
@@ -259,7 +265,7 @@ export default function SleeperLeague() {
             pfAcc[r.rid] = (pfAcc[r.rid] ?? 0) + r.pts;
           });
 
-          // SoS accumulation: average opponent points faced (head-to-head only)
+          // Head-to-head pairing for SoS / Schedule Index (map matchup_id -> [teams])
           const byMatchup2 = new Map<number, Array<{ rid: number; pts: number }>>();
           rows.forEach((r) => {
             const mid = r.matchupId;
@@ -268,16 +274,25 @@ export default function SleeperLeague() {
             arr.push({ rid: r.rid, pts: r.pts });
             byMatchup2.set(mid, arr);
           });
-
+          // SoS accumulation: average opponent points faced (head-to-head only)
           byMatchup2.forEach((pair) => {
-            if (pair.length < 2) return;
-            const a = pair[0];
-            const b = pair[1];
-            sosSumAcc[a.rid] = (sosSumAcc[a.rid] ?? 0) + b.pts;
-            sosCntAcc[a.rid] = (sosCntAcc[a.rid] ?? 0) + 1;
-            sosSumAcc[b.rid] = (sosSumAcc[b.rid] ?? 0) + a.pts;
-            sosCntAcc[b.rid] = (sosCntAcc[b.rid] ?? 0) + 1;
-          });
+  if (pair.length < 2) return;
+  const a = pair[0];
+  const b = pair[1];
+
+  // SoS: average opponent points faced
+  sosSumAcc[a.rid] = (sosSumAcc[a.rid] ?? 0) + b.pts;
+  sosCntAcc[a.rid] = (sosCntAcc[a.rid] ?? 0) + 1;
+  sosSumAcc[b.rid] = (sosSumAcc[b.rid] ?? 0) + a.pts;
+  sosCntAcc[b.rid] = (sosCntAcc[b.rid] ?? 0) + 1;
+
+  // Schedule Index: opponent points relative to league average that week
+  schedSumAcc[a.rid] = (schedSumAcc[a.rid] ?? 0) + (b.pts - leagueAvg);
+  schedCntAcc[a.rid] = (schedCntAcc[a.rid] ?? 0) + 1;
+  schedSumAcc[b.rid] = (schedSumAcc[b.rid] ?? 0) + (a.pts - leagueAvg);
+  schedCntAcc[b.rid] = (schedCntAcc[b.rid] ?? 0) + 1;
+});
+
 
           if (nTeams > 1) {
             for (let i = 0; i < rows.length; i++) {
@@ -382,6 +397,9 @@ export default function SleeperLeague() {
           const sos = sosCntAcc[rid]
             ? (sosSumAcc[rid] ?? 0) / sosCntAcc[rid]
             : null;
+            const schedule = schedCntAcc[rid]
+  ? (schedSumAcc[rid] ?? 0) / schedCntAcc[rid]
+  : null;
 
           return {
             roster_id: rid,
@@ -395,6 +413,7 @@ export default function SleeperLeague() {
             close,
             pf,
             sos,
+            schedule
           };
         });
 
@@ -600,6 +619,10 @@ export default function SleeperLeague() {
           return wltWins(r.combined);
         case "allplay":
           return wltWins(r.allplay);
+        case "schedule":
+          return r.schedule === null
+          ? (powerSortDir === "asc" ? Number.POSITIVE_INFINITY : Number.NEGATIVE_INFINITY)
+          : r.schedule;
         default:
           return r.xw;
       }
@@ -620,7 +643,7 @@ export default function SleeperLeague() {
   }, [powerRows, powerSortKey, powerSortDir]);
 
   const onSort = (
-    key: "xw" | "luck" | "pf" | "sos" | "actual" | "median" | "combined" | "allplay"
+    key: "xw" | "luck" | "pf" | "sos" | "schedule" | "actual" | "median" | "combined" | "allplay"
   ) => {
     if (powerSortKey === key) {
       setPowerSortDir((d) => (d === "asc" ? "desc" : "asc"));
@@ -631,7 +654,7 @@ export default function SleeperLeague() {
   };
 
   const sortIndicator = (
-    key: "xw" | "luck" | "pf" | "sos" | "actual" | "median" | "combined" | "allplay"
+    key: "xw" | "luck" | "pf" | "sos" | "schedule" | "actual" | "median" | "combined" | "allplay"
   ) => {
     if (powerSortKey !== key) return "";
     return powerSortDir === "asc" ? " ▲" : " ▼";
@@ -980,7 +1003,7 @@ export default function SleeperLeague() {
           <div>
             <h2 className="text-lg font-semibold">Power Rankings</h2>
             <p className="text-xs opacity-70">
-              Sorted by expected wins (xW). Luck shows actual − xW. SoS is average opponent points faced. Close (W/L) are games decided by ≤{CLOSE_MARGIN} pts.
+              Sorted by expected wins (xW). Luck shows actual − xW. SoS is average opponent points faced. Sched is avg (opponent pts − league avg pts). Close (W/L) are games decided by ≤{CLOSE_MARGIN} pts.
             </p>
           </div>
         </div>
@@ -1069,7 +1092,7 @@ export default function SleeperLeague() {
                       PF{sortIndicator("pf")}
                     </button>
                   </th>
-                  <th className="py-2">
+                  <th className="py-2 pr-2">
                     <button
                       type="button"
                       onClick={() => onSort("sos")}
@@ -1077,6 +1100,16 @@ export default function SleeperLeague() {
                       title="Sort by strength of schedule (avg opponent points)"
                     >
                       SoS{sortIndicator("sos")}
+                    </button>
+                  </th>
+                  <th className="py-2">
+                    <button
+                      type="button"
+                      onClick={() => onSort("schedule")}
+                      className="hover:underline"
+                      title="Sort by schedule index (avg opponent points − league average points)"
+                    >
+                      Sched{sortIndicator("schedule")}
                     </button>
                   </th>
                 </tr>
@@ -1109,8 +1142,11 @@ export default function SleeperLeague() {
                       {r.close.cw}-{r.close.cl}
                     </td>
                     <td className="py-2 pr-2 tabular-nums">{r.pf.toFixed(1)}</td>
-                    <td className="py-2 tabular-nums">
+                    <td className="py-2 pr-2 tabular-nums">
                       {r.sos === null ? "—" : r.sos.toFixed(1)}
+                    </td>
+                    <td className="py-2 tabular-nums">
+                      {r.schedule === null ? "—" : formatSigned(r.schedule, 1)}
                     </td>
                   </tr>
                 ))}

@@ -59,6 +59,10 @@ export type ParsedSlip = {
     // ✅ Normalized classification (what you asked for)
     market_type: MarketType;
 
+    // ✅ Provider-friendly key for live tracking + analytics (e.g. "h2h", "spreads", "totals", "player_props")
+    // Parser sets this; may be null for unknown/unsupported markets.
+    market_key: string | null;
+
     // ✅ Keep the raw text too (for offshore weirdness)
     market_text?: string | null;     // "Player Props Plus" / "1st Half" / etc
     selection_text: string;          // full human-readable selection as seen on slip

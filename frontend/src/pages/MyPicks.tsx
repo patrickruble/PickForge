@@ -15,7 +15,8 @@ type PickSnapshot = {
   mlAway?: number | null;
 };
 
-type ContestType = "pickem" | "mm";
+// contest_type can be null for older rows
+type ContestType = "pickem" | "mm" | null;
 
 type PickRow = {
   game_id: string;
@@ -69,11 +70,20 @@ const computeRiskWinFromOdds = (odds: number, stake = 100) => {
 // Same grading logic as Stats: uses final score + the line you locked in
 function gradePick(row: PickWithGame): Grade {
   const game = row.game;
-  if (!game || game.status !== "final") return "pending";
+
+  if (!game) return "pending";
 
   const home = game.home_score ?? null;
   const away = game.away_score ?? null;
-  if (home == null || away == null) return "pending";
+
+  // Score-first: if scores exist, we can grade even if status is missing/mismatched.
+  const hasScores = home != null && away != null;
+
+  const status = typeof game.status === "string" ? game.status.toLowerCase() : "";
+  const isTerminalStatus = ["final", "complete", "completed", "post", "closed"].includes(status);
+
+  if (!hasScores && !isTerminalStatus) return "pending";
+  if (!hasScores) return "pending";
 
   const pickedScore = row.side === "home" ? home : away;
   const otherScore = row.side === "home" ? away : home;
@@ -95,11 +105,16 @@ function gradePick(row: PickWithGame): Grade {
 
 export default function MyPicks() {
   const [uid, setUid] = useState<string | null>(null);
+  const [sessionLoading, setSessionLoading] = useState(true);
+  const [sessionError, setSessionError] = useState<string | null>(null);
+
   const [rows, setRows] = useState<PickWithGame[]>([]);
   const [loadingPicks, setLoadingPicks] = useState(true);
 
   // Mode toggle: show Pick'em (spread) picks vs only Moneyline Mastery (ML) picks
   const [mode, setMode] = useState<"pickem" | "mm">("pickem");
+  // Current NFL week (computed on render; cheap and avoids hook-order / TS "used before declaration" issues)
+  const weekNum = getNflWeekNumber(new Date());
 
   // Lines (we only use them for context; don't block UI on them)
   const { games, isLoading: linesLoading } = useLines("nfl");
@@ -124,26 +139,39 @@ export default function MyPicks() {
   useEffect(() => {
     let mounted = true;
 
-    async function init() {
-      const id = await ensureSession(); // creates anon session if none
+    // keep UID updated on auth changes
+    const { data: sub } = supabase.auth.onAuthStateChange((_e, session) => {
       if (!mounted) return;
-      setUid(id);
+      setUid(session?.user?.id ?? null);
+    });
 
-      // keep UID updated on auth changes
-      const { data: sub } = supabase.auth.onAuthStateChange((_e, session) => {
+    (async () => {
+      try {
+        setSessionLoading(true);
+        setSessionError(null);
+
+        const id = await ensureSession(); // creates anon session if none
         if (!mounted) return;
-        setUid(session?.user?.id ?? null);
-      });
 
-      return () => sub.subscription.unsubscribe();
-    }
+        if (!id) {
+          setUid(null);
+          setSessionError("Couldn't create or restore a session. Try refreshing, or log out/in.");
+        } else {
+          setUid(id);
+        }
+      } catch (e: any) {
+        if (!mounted) return;
+        setUid(null);
+        setSessionError(e?.message ?? "Failed to initialize session.");
+      } finally {
+        if (!mounted) return;
+        setSessionLoading(false);
+      }
+    })();
 
-    const cleanup = init();
     return () => {
       mounted = false;
-      if (cleanup && typeof (cleanup as any) === "function") {
-        (cleanup as any)();
-      }
+      sub.subscription.unsubscribe();
     };
   }, []);
 
@@ -155,7 +183,6 @@ export default function MyPicks() {
     (async () => {
       setLoadingPicks(true);
       try {
-        const week = getNflWeekNumber(new Date());
         const { data, error } = await supabase
           .from("picks")
           .select(
@@ -163,7 +190,7 @@ export default function MyPicks() {
           )
           .eq("user_id", uid)
           .eq("league", "nfl")
-          .eq("week", week)
+          .eq("week", weekNum)
           .order("commence_at", { ascending: true });
 
         if (cancelled) return;
@@ -188,6 +215,7 @@ export default function MyPicks() {
           const { data: gamesRaw, error: gamesError } = await supabase
             .from("games")
             .select("id, status, home_score, away_score")
+            .eq("league", "nfl")
             .in("id", gameIds);
 
           if (gamesError) {
@@ -216,21 +244,57 @@ export default function MyPicks() {
     return () => {
       cancelled = true;
     };
-  }, [uid]);
+  }, [uid, weekNum]);
 
-  const weekNum = getNflWeekNumber(new Date());
 
-  // Pick'em (spread) picks
-  const pickemRows = useMemo(
-    () => rows.filter((r) => r.contest_type === "pickem"),
-    [rows]
-  );
+  // Back-compat and improved classification for pickem and MM rows
+  const pickemRows = useMemo(() => {
+    return rows.filter((r) => {
+      // Prefer explicit picked_price_type over heuristics.
+      // Some spread picks can have picked_price temporarily null (or older rows), which
+      // would incorrectly classify them as ML if we only check picked_price.
+      const isExplicitSpread = r.picked_price_type === "spread";
+      const isExplicitML = r.picked_price_type === "ml";
 
-  // Moneyline Mastery picks (contest_type = 'mm')
-  const mmRows = useMemo(
-    () => rows.filter((r) => r.contest_type === "mm"),
-    [rows]
-  );
+      // Back-compat: if price_type is missing, fall back to whether a spread value exists.
+      const looksLikeSpread = r.picked_price != null;
+      const looksLikeML = !looksLikeSpread;
+
+      // Pick'em mode should include:
+      // - contest_type === 'pickem'
+      // - contest_type null but it looks like a spread pick
+      // - explicit spread picks even if contest_type is missing
+      if (r.contest_type === "pickem") return true;
+      if (r.contest_type === "mm") return false;
+
+      if (isExplicitSpread) return true;
+      if (isExplicitML) return false;
+
+      return r.contest_type == null && looksLikeSpread;
+    });
+  }, [rows]);
+
+  const mmRows = useMemo(() => {
+    return rows.filter((r) => {
+      const isExplicitSpread = r.picked_price_type === "spread";
+      const isExplicitML = r.picked_price_type === "ml";
+
+      const looksLikeSpread = r.picked_price != null;
+      const looksLikeML = !looksLikeSpread;
+
+      // MM should include:
+      // - contest_type === 'mm'
+      // - contest_type null but it looks like an ML pick
+      // - explicit ML picks even if contest_type is missing
+      if (r.contest_type === "mm") return true;
+      if (r.contest_type === "pickem") return false;
+
+      if (isExplicitML) return true;
+      if (isExplicitSpread) return false;
+
+      return r.contest_type == null && looksLikeML;
+    });
+  }, [rows]);
 
   // What we actually show in the list:
   // - Pick'em picks in "Pick'em" mode
@@ -242,7 +306,7 @@ export default function MyPicks() {
 
   // -------- Loading state --------
 
-  if (!uid || loadingPicks) {
+  if (sessionLoading || loadingPicks) {
     return (
       <div className="max-w-4xl mx-auto px-3 sm:px-4 py-6 text-slate-300">
         <header className="mb-4">
@@ -262,6 +326,25 @@ export default function MyPicks() {
             />
           ))}
         </div>
+      </div>
+    );
+  }
+
+  if (!uid) {
+    return (
+      <div className="max-w-4xl mx-auto px-3 sm:px-4 py-6 text-slate-300">
+        <header className="mb-3">
+          <h1 className="text-2xl sm:text-3xl font-semibold text-yellow-400">
+            My Picks — Week {weekNum}
+          </h1>
+          <p className="text-xs sm:text-sm text-slate-400 mt-1">
+            {sessionError ?? "You are not signed in and a session could not be created."}
+          </p>
+        </header>
+
+        <p className="text-sm text-slate-300">
+          Try refreshing the page. If it keeps happening, log out and log back in.
+        </p>
       </div>
     );
   }
@@ -489,30 +572,28 @@ export default function MyPicks() {
 
           // ---------- grade + tint ----------
           const grade = gradePick(r);
+
           const baseCard =
-  "rounded-2xl p-3 sm:p-4 shadow-sm shadow-black/30 transition-all";
+            "rounded-2xl p-3 sm:p-4 shadow-sm shadow-black/30 transition-all";
 
-let tint = "bg-slate-950/80 border border-slate-800"; // default pending
+          // default pending
+          let tint = "bg-slate-950/80 border border-slate-800";
 
-if (grade === "win") {
-  tint =
-    "bg-emerald-950/40 border border-emerald-500 shadow-emerald-500/30";
-}
-
-if (grade === "loss") {
-  tint =
-    "bg-rose-950/40 border border-rose-500 shadow-rose-500/30";
-}
-
-if (grade === "push") {
-  tint =
-    "bg-slate-700/40 border border-slate-400 shadow-slate-500/30";
-}
+          if (grade === "win") {
+            tint =
+              "bg-emerald-950/40 border border-emerald-500 shadow-emerald-500/30";
+          } else if (grade === "loss") {
+            tint =
+              "bg-rose-950/40 border border-rose-500 shadow-rose-500/30";
+          } else if (grade === "push") {
+            tint =
+              "bg-slate-700/40 border border-slate-400 shadow-slate-500/30";
+          }
 
           return (
             <li
-              key={`${r.game_id}-${r.side}-${r.contest_type}`}
-              className={baseCard + (grade === "pending" ? "" : tint)}
+              key={`${r.game_id}-${r.side}-${r.contest_type ?? "na"}-${r.picked_price_type ?? "na"}`}
+              className={`${baseCard} ${tint}`}
             >
               <div className="flex flex-col gap-2 sm:gap-3 sm:flex-row sm:items-center sm:justify-between">
                 {/* Left: matchup */}

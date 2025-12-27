@@ -55,6 +55,8 @@ export default function MyBets() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [refreshing, setRefreshing] = useState(false);
+  const [refreshMsg, setRefreshMsg] = useState<string | null>(null);
 
   // Private unit size for this user (used to normalize stakes into "units")
   // Stored in localStorage so it persists on this device.
@@ -127,6 +129,27 @@ export default function MyBets() {
     };
   }, []);
 
+  // Helper to load bets for a given user
+  async function loadBetsForUser(uId: string) {
+    setLoading(true);
+    setError(null);
+
+    try {
+      const { data, error } = await supabase
+        .from("bets")
+        .select("*")
+        .eq("user_id", uId)
+        .order("created_at", { ascending: false });
+
+      if (error) throw error;
+      setBets((data ?? []) as BetRow[]);
+    } catch (e: any) {
+      console.error("[MyBets] load error:", e);
+      setError(e.message ?? "Failed to load bets");
+    } finally {
+      setLoading(false);
+    }
+  }
   // 2) Load bets for this user
   useEffect(() => {
     if (!userId) {
@@ -135,7 +158,7 @@ export default function MyBets() {
     }
     let cancelled = false;
 
-    async function loadBets() {
+    (async () => {
       setLoading(true);
       setError(null);
 
@@ -146,26 +169,54 @@ export default function MyBets() {
           .eq("user_id", userId)
           .order("created_at", { ascending: false });
 
-        if (error) {
-          throw error;
-        }
-
-        if (!cancelled) {
-          setBets((data ?? []) as BetRow[]);
-        }
+        if (error) throw error;
+        if (!cancelled) setBets((data ?? []) as BetRow[]);
       } catch (e: any) {
         console.error("[MyBets] load error:", e);
         if (!cancelled) setError(e.message ?? "Failed to load bets");
       } finally {
         if (!cancelled) setLoading(false);
       }
-    }
+    })();
 
-    loadBets();
     return () => {
       cancelled = true;
     };
   }, [userId]);
+  // Handler: Refresh outcomes from backend and reload bets
+  async function handleRefreshOutcomes() {
+    if (!userId) return;
+
+    setRefreshing(true);
+    setRefreshMsg(null);
+    setError(null);
+
+    try {
+      const resp = await fetch("/api/bets/refresh", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ userId, daysFrom: 7 }),
+      });
+
+      const json = await resp.json().catch(() => null);
+      if (!resp.ok) {
+        const msg = json?.detail || json?.error || "Refresh failed";
+        throw new Error(msg);
+      }
+
+      const updated = typeof json?.updated === "number" ? json.updated : 0;
+      const checked = typeof json?.checked === "number" ? json.checked : 0;
+      setRefreshMsg(`Checked ${checked} open bets. Updated ${updated}.`);
+
+      // Reload after settlement
+      await loadBetsForUser(userId);
+    } catch (e: any) {
+      console.error("[MyBets] refresh outcomes error:", e);
+      setError(e.message ?? "Failed to refresh outcomes");
+    } finally {
+      setRefreshing(false);
+    }
+  }
 
   // 3) Filter + sort
   const filteredAndSortedBets = useMemo(() => {
@@ -875,7 +926,7 @@ export default function MyBets() {
             </div>
           </div>
 
-          <div className="flex flex-col gap-1 ml-auto">
+          <div className="flex flex-col gap-1 ml-auto mr-2">
             <span className="text-[10px] uppercase tracking-wide text-slate-500">
               Sort
             </span>
@@ -910,7 +961,24 @@ export default function MyBets() {
               </select>
             </div>
           </div>
+          <div className="flex flex-col gap-1">
+            <span className="text-[10px] uppercase tracking-wide text-slate-500">
+              Live
+            </span>
+            <button
+              type="button"
+              onClick={handleRefreshOutcomes}
+              disabled={refreshing}
+              className="bg-slate-900 border border-slate-700 rounded-lg px-3 py-1.5 text-xs sm:text-sm hover:bg-slate-800 disabled:opacity-60"
+              title="Fetch recent scores via Odds API and settle pending bets"
+            >
+              {refreshing ? "Refreshing..." : "Refresh outcomes"}
+            </button>
+          </div>
         </div>
+        {refreshMsg && (
+          <p className="mt-2 text-[11px] text-slate-400">{refreshMsg}</p>
+        )}
       </section>
 
       {/* Betting breakdown based on current filters */}
