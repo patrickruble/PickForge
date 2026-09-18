@@ -287,6 +287,15 @@ export default function Header() {
             Leaderboard
           </NavLink>
 
+          <NavLink
+            to="/td"
+            className={({ isActive }) =>
+              isActive ? "text-white" : "hover:text-white"
+            }
+          >
+            TD Board
+          </NavLink>
+
           {userId && (
             <>
               <NavLink

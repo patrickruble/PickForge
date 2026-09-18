@@ -22,6 +22,7 @@ const ConnectSleeper = lazy(() => import("./pages/connectsleeper"));
 const SleeperLeague = lazy(() => import("./pages/sleeperleague"));
 const UploadSlip = lazy(() => import("./bets/pages/UploadSlip"));
 const ReviewSlip = lazy(() => import("./bets/pages/ReviewSlip"));
+const TdBoard = lazy(() => import("./pages/TdBoard"));
 
 export default function App() {
   return (
@@ -39,6 +40,7 @@ export default function App() {
               <Route path="/" element={<GameBoard />} />
               <Route path="/mypicks" element={<MyPicks />} />
               <Route path="/leaderboard" element={<Leaderboard />} />
+              <Route path="/td" element={<TdBoard />} />
               <Route path="/stats" element={<Stats />} />
               <Route path="/login" element={<Login />} />
               <Route path="/username" element={<Username />} />

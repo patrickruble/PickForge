@@ -1,0 +1,143 @@
+/* TD Board: a printed tip sheet lying on the dark site. Everything scoped to .tdb. */
+.tdb {
+  --paper: #f4f1e8;
+  --ink: #1a1a17;
+  --red: #b3261e;
+  --rule: #c9c3b3;
+  --muted: #57534a;
+  --hl: #f7e08a;
+  --navy: #1f3a5f;
+  --gold: #f2c14e;
+  --display: "Oswald", "Arial Narrow", sans-serif;
+  --serif: "Source Serif 4", Georgia, serif;
+  --mono: "IBM Plex Mono", ui-monospace, Consolas, monospace;
+
+  background: var(--paper);
+  color: var(--ink);
+  font-family: var(--serif);
+  padding: clamp(20px, 4vw, 48px);
+  color-scheme: light;
+  box-shadow: 0 30px 60px -30px rgba(0, 0, 0, 0.8);
+}
+.tdb *:focus-visible { outline: 2px solid var(--red); outline-offset: 2px; }
+
+/* Masthead */
+.tdb-dateline {
+  display: flex; flex-wrap: wrap; justify-content: space-between; gap: 4px 16px;
+  font-family: var(--mono); font-size: 13px; margin: 0 0 10px;
+}
+.tdb-title {
+  margin: 0; padding: 12px 0 8px;
+  border-top: 8px solid var(--red); border-bottom: 1px solid var(--ink);
+  font-family: var(--display); font-weight: 700; text-transform: uppercase;
+  font-size: clamp(44px, 10vw, 104px); line-height: 0.9; letter-spacing: -0.01em;
+}
+.tdb-red { color: var(--red); }
+.tdb-standfirst {
+  margin: 0; padding: 12px 0; border-bottom: 3px double var(--ink);
+  font-style: italic; font-size: 19px; line-height: 1.45; max-width: 62ch;
+}
+
+/* Week tabs */
+.tdb-weeks { display: flex; flex-wrap: wrap; gap: 0; margin-top: 16px; border-bottom: 1px solid var(--ink); }
+.tdb-weeks button {
+  font-family: var(--display); font-size: 17px; text-transform: uppercase;
+  background: none; border: 0; color: var(--ink); padding: 8px 16px 6px; cursor: pointer;
+  border-bottom: 4px solid transparent; min-height: 44px;
+}
+.tdb-weeks button[aria-current="page"] { border-bottom-color: var(--red); color: var(--red); }
+.tdb-weeks button:hover { color: var(--red); }
+
+/* Layout */
+.tdb-grid { display: flex; flex-direction: column; gap: 36px; padding-top: 28px; }
+
+.tdb-h1 {
+  font-family: var(--display); font-weight: 700; text-transform: uppercase;
+  font-size: clamp(34px, 5vw, 56px); line-height: 0.98; margin: 0 0 16px;
+}
+.tdb-h2 {
+  font-family: var(--display); font-weight: 700; text-transform: uppercase; font-size: 22px;
+  margin: 0 0 8px; padding-bottom: 6px; border-bottom: 2px solid var(--ink);
+}
+
+/* Controls */
+.tdb-controls {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 12px 20px;
+  padding: 10px 0; border-top: 1px solid var(--ink); border-bottom: 1px solid var(--ink);
+  font-family: var(--mono); font-size: 14px;
+}
+.tdb-controls label { display: inline-flex; align-items: center; gap: 8px; }
+.tdb-controls select {
+  font: inherit; color: var(--ink); background: #fffdf7;
+  border: 1.5px solid var(--ink); border-radius: 0; padding: 8px 10px; min-height: 44px;
+}
+.tdb-seg { display: inline-flex; border: 1.5px solid var(--ink); }
+.tdb-seg button {
+  font: inherit; background: #fffdf7; color: var(--ink); border: 0; padding: 0 14px;
+  min-height: 41px; cursor: pointer;
+}
+.tdb-seg button + button { border-left: 1.5px solid var(--ink); }
+.tdb-seg button[aria-pressed="true"] { background: var(--ink); color: var(--paper); }
+.tdb-seg button:disabled { opacity: 0.4; cursor: default; }
+.tdb-check input { width: 18px; height: 18px; accent-color: var(--red); }
+
+/* Board */
+.tdb-scroll { overflow-x: auto; }
+.tdb-table { width: 100%; border-collapse: collapse; font-family: var(--mono); font-size: 15px; min-width: 760px; }
+.tdb-table th {
+  text-align: left; font-weight: 600; font-size: 13px; padding: 10px 6px 8px;
+  border-bottom: 2px solid var(--ink); white-space: nowrap;
+}
+.tdb-table td { padding: 9px 6px; border-bottom: 1px solid var(--rule); white-space: nowrap; }
+.tdb-table .num { text-align: right; font-variant-numeric: tabular-nums; }
+.tdb-table tr.is-best td { background: var(--hl); }
+.tdb-loading { text-align: center; padding: 28px 0 !important; color: var(--muted); }
+
+.tdb-player { display: flex; align-items: center; gap: 10px; }
+.tdb-tag {
+  font-family: var(--display); font-weight: 700; font-size: 13px; letter-spacing: 0.04em;
+  width: 42px; text-align: center; padding: 3px 0 1px; border-bottom: 3px solid;
+}
+.tdb-name { font-family: var(--serif); font-weight: 600; font-size: 17px; }
+.tdb-pos { color: var(--muted); font-size: 12px; }
+.tdb-flag {
+  font-family: var(--display); font-weight: 700; font-size: 12px; text-transform: uppercase;
+  color: #fffdf7; background: var(--red); padding: 2px 6px; transform: rotate(-3deg);
+}
+.tdb-game { color: var(--muted); }
+
+.tdb-edge { display: inline-flex; align-items: center; gap: 8px; }
+.tdb-bar { width: 56px; height: 9px; background: #e3ddcc; display: inline-flex; }
+.tdb-bar .up { background: var(--red); height: 100%; }
+.tdb-bar .down { background: #9a9383; height: 100%; margin-left: auto; }
+.tdb .pos { color: var(--red); font-weight: 600; }
+.tdb .neg { color: var(--muted); }
+
+.tdb-note { font-size: 15px; line-height: 1.55; color: var(--muted); max-width: 70ch; margin: 14px 0 0; }
+.tdb-empty { font-size: 18px; padding: 32px 0; }
+
+/* Sidebar */
+.tdb-side { display: grid; grid-template-columns: minmax(0, 1fr) 300px; gap: 32px; align-items: start; }
+@media (max-width: 760px) { .tdb-side { grid-template-columns: minmax(0, 1fr); } }
+.tdb-card { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 0 24px; }
+@media (max-width: 760px) { .tdb-card { grid-template-columns: minmax(0, 1fr); } }
+.tdb-small { display: block; font-family: var(--mono); font-size: 13px; color: var(--muted); }
+.tdb-card { list-style: none; margin: 0; padding: 0; }
+.tdb-card li {
+  display: flex; justify-content: space-between; align-items: center; gap: 12px;
+  padding: 10px 0; border-bottom: 1px solid var(--rule);
+}
+.tdb-card strong { font-size: 17px; }
+.tdb-stamp {
+  font-family: var(--display); font-weight: 700; font-size: 15px; text-transform: uppercase;
+  letter-spacing: 0.08em; padding: 3px 8px; border: 2px solid; transform: rotate(-6deg);
+}
+.tdb-stamp.won { color: var(--red); }
+.tdb-stamp.lost { color: var(--muted); }
+
+.tdb-record { background: var(--navy); color: var(--paper); padding: 18px 20px; border-top: 6px solid #e0a526; }
+.tdb-record h2 { font-family: var(--mono); font-size: 13px; font-weight: 400; margin: 0 0 6px; }
+.tdb-record p { margin: 0; font-family: var(--mono); font-size: 15px; }
+.tdb-record .tdb-big { font-family: var(--display); font-weight: 700; font-size: 48px; line-height: 1; color: var(--gold); margin-bottom: 4px; }
+
+@media (prefers-reduced-motion: reduce) { .tdb * { transition: none !important; } }
