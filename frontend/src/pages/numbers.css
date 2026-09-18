@@ -1,0 +1,47 @@
+/* Stat pages: agate tables with league-rank shading. */
+.nb { color: var(--pf-ink); }
+
+.nb-tabs {
+  display: flex; gap: 0 22px; overflow-x: auto; white-space: nowrap; scrollbar-width: none;
+  border-bottom: 1px solid var(--pf-ink); margin-bottom: 24px;
+}
+.nb-tabs::-webkit-scrollbar { display: none; }
+.nb-tabs a {
+  font-family: var(--pf-display); font-weight: 500; font-size: 16px; text-transform: uppercase;
+  color: var(--pf-ink); text-decoration: none; padding: 8px 0 6px; border-bottom: 4px solid transparent;
+  margin-bottom: -1px;
+}
+.nb-tabs a.active { color: var(--pf-red); border-bottom-color: var(--pf-red); }
+
+.nb-title { font-size: clamp(34px, 5vw, 56px); margin: 0 0 12px; }
+.nb-dek { font-style: italic; font-size: 19px; line-height: 1.45; max-width: 62ch; margin: 0 0 8px; }
+.nb-stamp { font-family: var(--font-mono); font-size: 13px; color: var(--pf-muted); margin: 0; }
+.nb-empty { font-size: 18px; padding: 24px 0; }
+
+.nb-section { margin-top: 36px; }
+.nb-section h2 {
+  font-size: 24px; margin: 0; padding-bottom: 6px; border-bottom: 2px solid var(--pf-ink);
+}
+.nb-note { font-size: 15px; color: var(--pf-muted); max-width: 70ch; margin: 8px 0 0; line-height: 1.5; }
+
+.nb-scroll { overflow-x: auto; margin-top: 10px; }
+.nb-table { width: 100%; border-collapse: collapse; font-family: var(--font-mono); font-size: 14px; }
+.nb-table th { border-bottom: 1.5px solid var(--pf-ink); padding: 0; text-align: left; white-space: nowrap; }
+.nb-table th.num { text-align: right; }
+.nb-table th button {
+  font: inherit; font-size: 12px; font-weight: 600; color: var(--pf-ink); background: none; border: 0;
+  padding: 10px 6px 8px; cursor: pointer; width: 100%; text-align: inherit; min-height: 44px;
+}
+.nb-table th button:hover { color: var(--pf-red); }
+.nb-arrow { display: inline-block; width: 1em; font-size: 9px; margin-left: 2px; color: var(--pf-red); }
+.nb-table td { padding: 7px 6px; border-bottom: 1px solid var(--pf-rule); white-space: nowrap; }
+.nb-table .num { text-align: right; font-variant-numeric: tabular-nums; }
+.nb-table .nb-text { font-family: var(--font-serif); font-weight: 600; font-size: 16px; }
+.nb-table .nb-rk { width: 2.5em; color: var(--pf-muted); font-size: 12px; text-align: right; }
+.nb-table th.nb-rk { padding: 10px 6px 8px; font-size: 12px; }
+
+/* rank shading: newsprint tints, green best, red worst */
+.nb-table td.r5 { background: #cfe3c8; font-weight: 600; }
+.nb-table td.r4 { background: #e2eddc; }
+.nb-table td.r2 { background: #f1e2dc; }
+.nb-table td.r1 { background: #e8cfc7; font-weight: 600; }

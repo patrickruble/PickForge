@@ -189,6 +189,7 @@ export default function Header() {
   const links: { to: string; label: string; authed?: boolean }[] = [
     { to: "/", label: "Weekly Picks" },
     { to: "/td", label: "TD Board" },
+    { to: "/numbers", label: "The Numbers" },
     { to: "/leaderboard", label: "Leaderboard" },
     { to: "/mypicks", label: "My Picks" },
     { to: "/stats", label: "Stats", authed: true },

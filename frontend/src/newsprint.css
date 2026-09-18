@@ -129,3 +129,9 @@ input, select, textarea {
 input::placeholder, textarea::placeholder { color: #8a8474; }
 :focus-visible { outline: 2px solid var(--pf-red); outline-offset: 2px; }
 a:hover { color: var(--pf-red); }
+
+/* Team tag: team colors, trim underline. Used on the TD board and stat pages. */
+.pf-tag {
+  display: inline-block; font-family: var(--pf-display); font-weight: 700; font-size: 13px;
+  letter-spacing: 0.04em; width: 42px; text-align: center; padding: 3px 0 1px; border-bottom: 3px solid;
+}

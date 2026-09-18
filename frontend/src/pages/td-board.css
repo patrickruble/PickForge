@@ -90,10 +90,6 @@
 .tdb-loading { text-align: center; padding: 28px 0 !important; color: var(--muted); }
 
 .tdb-player { display: flex; align-items: center; gap: 10px; }
-.tdb-tag {
-  font-family: var(--display); font-weight: 700; font-size: 13px; letter-spacing: 0.04em;
-  width: 42px; text-align: center; padding: 3px 0 1px; border-bottom: 3px solid;
-}
 .tdb-name { font-family: var(--serif); font-weight: 600; font-size: 17px; }
 .tdb-pos { color: var(--muted); font-size: 12px; }
 .tdb-flag {
