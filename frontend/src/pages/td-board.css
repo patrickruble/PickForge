@@ -12,12 +12,8 @@
   --serif: "Source Serif 4", Georgia, serif;
   --mono: "IBM Plex Mono", ui-monospace, Consolas, monospace;
 
-  background: var(--paper);
   color: var(--ink);
   font-family: var(--serif);
-  padding: clamp(20px, 4vw, 48px);
-  color-scheme: light;
-  box-shadow: 0 30px 60px -30px rgba(0, 0, 0, 0.8);
 }
 .tdb *:focus-visible { outline: 2px solid var(--red); outline-offset: 2px; }
 
@@ -34,7 +30,7 @@
 }
 .tdb-red { color: var(--red); }
 .tdb-standfirst {
-  margin: 0; padding: 12px 0; border-bottom: 3px double var(--ink);
+  margin: 0; padding: 4px 0 0;
   font-style: italic; font-size: 19px; line-height: 1.45; max-width: 62ch;
 }
 

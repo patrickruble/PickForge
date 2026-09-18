@@ -110,11 +110,12 @@ export default function TdBoard() {
     (async () => {
       const [w, g] = await Promise.all([
         supabase.from("td_board").select("week").eq("season", season).order("week", { ascending: false }).limit(10000),
+        // Every priced row this season: the card is rebuilt per week from the
+        // full board, then only its graded plays count toward the record.
         supabase
           .from("td_board")
-          .select("week,player_id,player,team,best_price,ev,actual_td,graded")
+          .select("week,player_id,player,team,p_anytime,best_price,ev,actual_td,graded")
           .eq("season", season)
-          .eq("graded", true)
           .not("best_price", "is", null)
           .limit(10000),
       ]);
@@ -168,7 +169,7 @@ export default function TdBoard() {
     graded.forEach((r) => byWeek.set(r.week, [...(byWeek.get(r.week) ?? []), r]));
     let w = 0, l = 0, units = 0;
     byWeek.forEach((wk) =>
-      topCard(wk).forEach((r) => {
+      topCard(wk).filter((r) => r.graded).forEach((r) => {
         if ((r.actual_td ?? 0) >= 1) { w++; units += payout(r.best_price!); }
         else { l++; units -= 1; }
       })
@@ -180,20 +181,11 @@ export default function TdBoard() {
 
   return (
     <article className="tdb">
-      <header className="tdb-mast">
-        <p className="tdb-dateline">
-          <span>{season} season</span>
-          <span>{week ? `Week ${week}` : "No board yet"}</span>
-          <span>Posted before kickoff, graded after</span>
-        </p>
-        <h1 className="tdb-title">
-          <span>Pick</span><span className="tdb-red">Forge</span>
-        </h1>
-        <p className="tdb-standfirst">
-          Anytime touchdown odds from our model, set against the sportsbook. Every play on the card
-          is graded, win or lose.
-        </p>
-      </header>
+      <h1 className="tdb-h1">{week ? `Anytime TD board, Week ${week}` : "Anytime TD board"}</h1>
+      <p className="tdb-standfirst">
+        Anytime touchdown odds from our model, set against the sportsbook. Every play on the card
+        is graded, win or lose.
+      </p>
 
       {weeks.length > 1 && (
         <nav className="tdb-weeks" aria-label="Weeks">
@@ -258,7 +250,7 @@ export default function TdBoard() {
             </section>
           </aside>
           <section aria-labelledby="board-h">
-            <h2 id="board-h" className="tdb-h1">Anytime TD board, Week {week}</h2>
+            <h2 id="board-h" className="tdb-h2">The board</h2>
 
             <div className="tdb-controls">
               <label>

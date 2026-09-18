@@ -2,6 +2,8 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link, NavLink, useNavigate } from "react-router-dom";
 import { supabase } from "../lib/supabase";
+import { getNflWeekNumber } from "../hooks/useRemotePicks";
+import "./header.css";
 
 function logSupabaseError(prefix: string, error: any) {
   if (!error) return;
@@ -176,165 +178,77 @@ export default function Header() {
     navigate("/");
   };
 
-  const userBar = (
-    <>
-      {displayName && userId ? (
-        <>
-          {/* Avatar + name → go to user profile */}
-          <Link
-            to={profileSlug ? `/u/${profileSlug}` : "/leaderboard"}
-            className="flex items-center gap-2 px-2 py-1 rounded bg-slate-800 border border-slate-700 hover:bg-slate-700 text-[11px] sm:text-xs"
-            title="View profile"
-          >
-            <div className="w-6 h-6 rounded-full bg-slate-900 flex items-center justify-center overflow-hidden text-[0.7rem] font-bold text-yellow-400">
-              {avatarUrl ? (
-                <img
-                  src={avatarUrl}
-                  alt="Avatar"
-                  className="w-full h-full object-cover"
-                />
-              ) : (
-                (displayName.replace("@", "")[0] ?? "?").toUpperCase()
-              )}
-            </div>
-            <span className="truncate max-w-[110px] sm:max-w-none">
-              {displayName}
-            </span>
-          </Link>
+  const today = new Date().toLocaleDateString("en-US", {
+    weekday: "long",
+    month: "long",
+    day: "numeric",
+    year: "numeric",
+  });
+  const week = getNflWeekNumber(new Date());
 
-          <button
-            onClick={handleLogout}
-            className="bg-yellow-400 text-black px-3 py-1 rounded-xl text-xs sm:text-sm"
-          >
-            Logout
-          </button>
-        </>
-      ) : (
-        <Link
-          to="/login"
-          className="bg-yellow-400 text-black px-3 py-1 rounded-xl text-xs sm:text-sm"
-          title="Sign in"
-        >
-          Login
-        </Link>
-      )}
-    </>
-  );
+  const links: { to: string; label: string; authed?: boolean }[] = [
+    { to: "/", label: "Weekly Picks" },
+    { to: "/td", label: "TD Board" },
+    { to: "/leaderboard", label: "Leaderboard" },
+    { to: "/mypicks", label: "My Picks" },
+    { to: "/stats", label: "Stats", authed: true },
+    { to: "/leagues", label: "Leagues", authed: true },
+    { to: "/feed", label: "Feed", authed: true },
+    { to: "/bets", label: "Bet Tracker", authed: true },
+  ];
 
   return (
-    <header className="border-b border-slate-800 bg-slate-900">
-      <div className="mx-auto max-w-6xl px-3 sm:px-4 py-2 sm:py-3 space-y-2">
-        {/* Row 1: PickForge logo + user bar */}
-        <div className="flex items-center justify-between gap-3">
-          <Link to="/" className="pf-logo text-yellow-400 flex items-center gap-2">
-            <span className="pf-logo-lock inline-flex items-center justify-center">
-              <svg
-                width="28"
-                height="28"
-                viewBox="0 0 28 28"
-                xmlns="http://www.w3.org/2000/svg"
-              >
-                {/* Black background */}
-                <rect width="28" height="28" fill="black" rx="6" />
-                {/* Lock shackle */}
-                <path
-                  d="M9 11c0-3.3 2.1-5 5-5s5 1.7 5 5v2h-2v-2c0-2-.9-3-3-3s-3 1-3 3v2H9v-2z"
-                  fill="#facc15"
-                />
-                {/* Anvil base */}
-                <path
-                  d="M6 17h16l-1.8 2.5c-.3.4-.9.7-1.4.7H9.2c-.5 0-1-.3-1.4-.7L6 17z"
-                  fill="#facc15"
-                />
-                {/* Anvil stand */}
-                <rect x="11" y="20" width="6" height="3" rx="1" fill="#facc15" />
-              </svg>
-            </span>
-            <span className="pf-logo-text font-display text-xl sm:text-2xl tracking-[0.12em] uppercase">
-              PickForge
-            </span>
+    <header className="pf-mast">
+      <div className="pf-mast-inner">
+        <p className="pf-dateline">
+          <span>{today}</span>
+          <span>NFL Week {week}</span>
+          <span className="pf-dateline-tag">Free picks, graded in public</span>
+        </p>
+
+        <div className="pf-mast-row">
+          <Link to="/" className="pf-wordmark" aria-label="PickForge home">
+            <span>Pick</span>
+            <span className="pf-wordmark-red">Forge</span>
           </Link>
 
-          <div className="flex items-center gap-2">{userBar}</div>
+          <div className="pf-userbar">
+            {displayName && userId ? (
+              <>
+                <Link
+                  to={profileSlug ? `/u/${profileSlug}` : "/leaderboard"}
+                  className="pf-user"
+                  title="View profile"
+                >
+                  <span className="pf-avatar">
+                    {avatarUrl ? (
+                      <img src={avatarUrl} alt="" />
+                    ) : (
+                      (displayName.replace("@", "")[0] ?? "?").toUpperCase()
+                    )}
+                  </span>
+                  <span className="pf-user-name">{displayName}</span>
+                </Link>
+                <button type="button" onClick={handleLogout} className="pf-btn pf-btn-ghost">
+                  Log out
+                </button>
+              </>
+            ) : (
+              <Link to="/login" className="pf-btn">
+                Log in
+              </Link>
+            )}
+          </div>
         </div>
 
-        {/* Row 2: nav */}
-        <nav className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs sm:text-sm text-slate-200">
-          <NavLink
-            to="/"
-            className={({ isActive }) =>
-              isActive ? "text-white" : "hover:text-white"
-            }
-          >
-            Weekly Picks
-          </NavLink>
-
-          <NavLink
-            to="/mypicks"
-            className={({ isActive }) =>
-              isActive ? "text-white" : "hover:text-white"
-            }
-          >
-            My Picks
-          </NavLink>
-
-          <NavLink
-            to="/leaderboard"
-            className={({ isActive }) =>
-              isActive ? "text-white" : "hover:text-white"
-            }
-          >
-            Leaderboard
-          </NavLink>
-
-          <NavLink
-            to="/td"
-            className={({ isActive }) =>
-              isActive ? "text-white" : "hover:text-white"
-            }
-          >
-            TD Board
-          </NavLink>
-
-          {userId && (
-            <>
-              <NavLink
-                to="/stats"
-                className={({ isActive }) =>
-                  isActive ? "text-white" : "hover:text-white"
-                }
-              >
-                Stats
+        <nav className="pf-nav" aria-label="Sections">
+          {links
+            .filter((l) => !l.authed || userId)
+            .map((l) => (
+              <NavLink key={l.to} to={l.to} end={l.to === "/"}>
+                {l.label}
               </NavLink>
-
-              <NavLink
-                to="/leagues"
-                className={({ isActive }) =>
-                  isActive ? "text-white" : "hover:text-white"
-                }
-              >
-                Leagues
-              </NavLink>
-
-              <NavLink
-                to="/feed"
-                className={({ isActive }) =>
-                  isActive ? "text-white" : "hover:text-white"
-                }
-              >
-                Feed
-              </NavLink>
-
-              <NavLink
-                to="/bets"
-                className={({ isActive }) =>
-                  isActive ? "text-white" : "hover:text-white"
-                }
-              >
-                Bet Tracker
-              </NavLink>
-            </>
-          )}
+            ))}
         </nav>
       </div>
     </header>

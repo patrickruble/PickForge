@@ -1,0 +1,131 @@
+/* ===========================================================
+   PickForge newsprint theme
+   The site was built dark with Tailwind's slate/yellow palette.
+   Rather than rewrite every page, this file remaps those palette
+   variables to paper and ink, so existing classes like bg-slate-900
+   or text-yellow-400 now print as newsprint. Loaded after all other CSS.
+   =========================================================== */
+
+:root {
+  color-scheme: light;
+
+  /* Named tokens (also used by the TD board) */
+  --pf-paper: #f4f1e8;
+  --pf-panel: #ede8da;
+  --pf-raised: #e3ddcc;
+  --pf-rule: #c9c3b3;
+  --pf-ink: #1a1a17;
+  --pf-muted: #57534a;
+  --pf-red: #b3261e;
+  --pf-red-dark: #8e1f18;
+  --pf-green: #2f6b3a;
+  --pf-hl: #f7e08a;
+
+  /* Slate + gray: inverted, so dark surfaces become paper and light text becomes ink */
+  --color-slate-50: #1a1a17;  --color-gray-50: #1a1a17;
+  --color-slate-100: #1a1a17; --color-gray-100: #1a1a17;
+  --color-slate-200: #2b2924; --color-gray-200: #2b2924;
+  --color-slate-300: #45423a; --color-gray-300: #45423a;
+  --color-slate-400: #57534a; --color-gray-400: #57534a;
+  --color-slate-500: #6e6a5e; --color-gray-500: #6e6a5e;
+  --color-slate-600: #9a9383; --color-gray-600: #9a9383;
+  --color-slate-700: #c9c3b3; --color-gray-700: #c9c3b3;
+  --color-slate-800: #e3ddcc; --color-gray-800: #e3ddcc;
+  --color-slate-900: #ede8da; --color-gray-900: #ede8da;
+  --color-slate-950: #f4f1e8; --color-gray-950: #f4f1e8;
+
+  --color-white: #1a1a17;
+  --color-black: #fffdf7;
+
+  /* Yellow was the brand accent: now the red spot ink */
+  --color-yellow-50: #f7e3df;
+  --color-yellow-100: #8e1f18;
+  --color-yellow-200: #8e1f18;
+  --color-yellow-300: #b3261e;
+  --color-yellow-400: #b3261e;
+  --color-yellow-500: #b3261e;
+  --color-yellow-600: #8e1f18;
+  --color-amber-300: #b3261e;
+
+  /* Wins: green ink */
+  --color-emerald-50: #1f5a2b;  --color-green-50: #1f5a2b;
+  --color-emerald-100: #1f5a2b; --color-green-100: #1f5a2b;
+  --color-emerald-200: #1f5a2b; --color-green-200: #1f5a2b;
+  --color-emerald-300: #2f6b3a; --color-green-300: #2f6b3a;
+  --color-emerald-400: #2f6b3a; --color-green-400: #2f6b3a;
+  --color-emerald-500: #2f6b3a; --color-green-500: #2f6b3a;
+  --color-emerald-600: #2f6b3a; --color-green-600: #2f6b3a;
+  --color-emerald-700: #cfe3c8; --color-green-700: #cfe3c8;
+  --color-emerald-800: #cfe3c8; --color-green-800: #cfe3c8;
+  --color-emerald-900: #e2eddc; --color-green-900: #e2eddc;
+  --color-emerald-950: #e2eddc; --color-green-950: #e2eddc;
+
+  /* Losses: grey ink, like a MISSED stamp. Red is reserved for the brand. */
+  --color-rose-50: #45423a;  --color-red-50: #45423a;
+  --color-rose-100: #45423a; --color-red-100: #45423a;
+  --color-rose-200: #45423a; --color-red-200: #45423a;
+  --color-rose-300: #57534a; --color-red-300: #57534a;
+  --color-rose-400: #57534a; --color-red-400: #57534a;
+  --color-rose-500: #6e6a5e; --color-red-500: #6e6a5e;
+  --color-rose-600: #6e6a5e; --color-red-600: #6e6a5e;
+  --color-rose-700: #d9d3c4; --color-red-700: #d9d3c4;
+  --color-rose-800: #d9d3c4; --color-red-800: #d9d3c4;
+  --color-rose-900: #e6e0d1; --color-red-900: #e6e0d1;
+  --color-rose-950: #e6e0d1; --color-red-950: #e6e0d1;
+
+  /* Odd one-off accents: navy ink */
+  --color-sky-300: #1f3a5f; --color-sky-500: #1f3a5f; --color-sky-700: #1f3a5f;
+  --color-cyan-50: #1f3a5f; --color-cyan-100: #1f3a5f; --color-cyan-500: #1f3a5f; --color-cyan-900: #dfe5ee;
+  --color-indigo-50: #1f3a5f; --color-indigo-100: #1f3a5f; --color-indigo-500: #1f3a5f; --color-indigo-900: #dfe5ee;
+
+  /* Square corners (rounded-full stays round for avatars and dots) */
+  --radius-xs: 0; --radius-sm: 0; --radius-md: 0; --radius-lg: 0;
+  --radius-xl: 0; --radius-2xl: 0; --radius-3xl: 0; --radius-4xl: 0;
+
+  /* Type */
+  --font-sans: "Source Serif 4", Georgia, serif;
+  --font-serif: "Source Serif 4", Georgia, serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, Consolas, monospace;
+  --pf-display: "Oswald", "Arial Narrow", sans-serif;
+}
+
+html,
+body {
+  font-family: var(--font-sans);
+  background: var(--pf-paper);
+  color: var(--pf-ink);
+  font-variant-numeric: tabular-nums;
+}
+
+h1, h2 {
+  font-family: var(--pf-display);
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: -0.005em !important;
+  line-height: 1;
+}
+h3 { font-family: var(--pf-display); font-weight: 500; }
+
+/* Agate: the site's many tiny labels read best in mono */
+.text-\[9px\], .text-\[10px\], .text-\[11px\], .text-\[12px\], th, code, kbd {
+  font-family: var(--font-mono);
+}
+
+/* No glow. Ink doesn't glow. */
+[class*="shadow-"] { --tw-shadow: 0 0 #0000 !important; box-shadow: none !important; }
+[class*="drop-shadow"] { filter: none !important; }
+
+/* Pills become square tags; round avatars, logos and status dots stay round */
+[class*="rounded-full"][class*="px-"] { border-radius: 0 !important; }
+[class*="backdrop-blur"] { backdrop-filter: none !important; }
+* { text-shadow: none !important; }
+
+/* Buttons and inputs keep a visible edge on paper */
+input, select, textarea {
+  color: var(--pf-ink);
+  background-color: #fffdf7;
+  border-color: var(--pf-ink);
+}
+input::placeholder, textarea::placeholder { color: #8a8474; }
+:focus-visible { outline: 2px solid var(--pf-red); outline-offset: 2px; }
+a:hover { color: var(--pf-red); }

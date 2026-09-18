@@ -2,6 +2,7 @@
 import { BrowserRouter, Routes, Route } from "react-router-dom";
 import { Suspense, lazy } from "react";
 import "./App.css";
+import "./newsprint.css";
 import Header from "./components/Header";
 
 // Lazy-loaded pages
@@ -27,10 +28,10 @@ const TdBoard = lazy(() => import("./pages/TdBoard"));
 export default function App() {
   return (
     <BrowserRouter>
-      <div className="min-h-screen bg-[#0f1115] text-gray-100">
+      <div className="min-h-screen bg-slate-950 text-slate-100">
         <Header />
 
-        <main className="mx-auto max-w-6xl px-4 py-12">
+        <main className="mx-auto max-w-6xl px-4 py-8">
           <Suspense
             fallback={
               <div className="text-sm text-slate-400">Loading PickForge…</div>
@@ -59,11 +60,11 @@ export default function App() {
           </Suspense>
         </main>
 
-        <footer className="mt-16 border-t border-white/5">
-          <div className="mx-auto max-w-6xl px-4 py-6 text-center text-xs text-gray-400">
-            Built with American Ingenuity by{" "}
-            <span className="text-yellow-400">PickForge</span>
-          </div>
+        <footer className="pf-foot">
+          <p>
+            <span>PickForge. Free NFL pick'em and model picks.</span>
+            <span>Every pick graded in public.</span>
+          </p>
         </footer>
       </div>
     </BrowserRouter>
